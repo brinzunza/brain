@@ -1,0 +1,234 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background-color: #000;
+  color: #fff;
+  line-height: 1.6;
+}
+
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.header {
+  margin-bottom: 60px;
+  text-align: center;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: 400;
+  text-transform: lowercase;
+  letter-spacing: 1px;
+}
+
+.section {
+  margin-bottom: 50px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 400;
+  text-transform: lowercase;
+  margin-bottom: 20px;
+  color: #666;
+}
+
+textarea {
+  width: 100%;
+  min-height: 120px;
+  background-color: #000;
+  color: #fff;
+  border: 1px solid #333;
+  padding: 15px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  resize: vertical;
+  text-transform: lowercase;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #00ff88;
+}
+
+textarea::placeholder {
+  color: #666;
+  text-transform: lowercase;
+}
+
+.file-input-wrapper {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.file-input-label {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 14px;
+  text-transform: lowercase;
+  text-decoration: underline;
+  color: #fff;
+  transition: color 0.2s;
+}
+
+.file-input-label:hover {
+  color: #00ff88;
+}
+
+input[type="file"] {
+  position: absolute;
+  left: -9999px;
+}
+
+.file-name {
+  margin-left: 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+.button {
+  background: none;
+  border: none;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  cursor: pointer;
+  text-transform: lowercase;
+  text-decoration: underline;
+  padding: 0;
+  margin-top: 15px;
+  transition: color 0.2s;
+}
+
+.button:hover {
+  color: #00ff88;
+}
+
+.button:disabled {
+  color: #333;
+  cursor: not-allowed;
+}
+
+.status-message {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #666;
+}
+
+.status-message.success {
+  color: #00ff88;
+}
+
+.status-message.error {
+  color: #ff0044;
+}
+
+.chat-container {
+  margin-top: 30px;
+}
+
+.messages {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #333;
+}
+
+.message {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.message:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.message-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: lowercase;
+}
+
+.message-content {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.question-input {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+}
+
+.question-input textarea {
+  flex: 1;
+  min-height: 60px;
+}
+
+.question-input .button {
+  margin-top: 0;
+  padding-top: 15px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00ff88;
+}
+
+.section-title.danger {
+  color: #ff0044;
+}
+
+.button.danger {
+  color: #ff0044;
+}
+
+.button.danger:hover {
+  color: #fff;
+}
+
+.clear-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.warning-text {
+  font-size: 14px;
+  color: #ff0044;
+  line-height: 1.6;
+}
+
+.clear-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
