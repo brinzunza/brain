@@ -51,6 +51,18 @@ def get_embedding(text: str):
     )
     return response.data[0].embedding
 
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200):
+    """split text into overlapping chunks"""
+    words = text.split()
+    chunks = []
+
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = ' '.join(words[i:i + chunk_size])
+        if chunk.strip():
+            chunks.append(chunk.strip())
+
+    return chunks
+
 
 @app.post("/api/add-text")
 async def add_text(input_data: TextInput):
@@ -116,22 +128,27 @@ async def add_file(file: UploadFile = File(...)):
         if not text_content.strip():
             return {"status": "error", "message": "no text content found in file"}
 
-        embedding = get_embedding(text_content)
+        chunks = chunk_text(text_content)
+        chunk_ids = []
 
-        doc_id = f"file_{datetime.now().timestamp()}"
+        for i, chunk in enumerate(chunks):
+            embedding = get_embedding(chunk)
 
-        collection.add(
-            embeddings=[embedding],
-            documents=[text_content],
-            metadatas=[{
-                "type": "file",
-                "filename": file.filename,
-                "timestamp": datetime.now().isoformat()
-            }],
-            ids=[doc_id]
-        )
+            doc_id = f"file_{datetime.now().timestamp()}_{i}"
 
-        return {"status": "success", "message": f"file {file.filename} stored successfully", "id": doc_id}
+            collection.add(
+                embeddings=[embedding],
+                documents=[chunk],
+                metadatas=[{
+                    "type": "file",
+                    "filename": file.filename,
+                    "timestamp": datetime.now().isoformat()
+                }],
+                ids=[doc_id]
+            )
+            chunk_ids.append(doc_id)
+
+        return {"status": "success", "message": f"file {file.filename} stored successfully"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
