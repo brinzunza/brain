@@ -66,6 +66,50 @@ function Inputs() {
     }
   }
 
+  const openaiInputs = inputs.filter(input => input.provider === 'openai')
+  const ollamaInputs = inputs.filter(input => input.provider === 'ollama')
+
+  const renderInputsList = (inputsList, providerName) => {
+    if (inputsList.length === 0) {
+      return (
+        <div className="empty-state-small">
+          no {providerName} inputs yet
+        </div>
+      )
+    }
+
+    return (
+      <div className="inputs-list">
+        {inputsList.map((input) => (
+          <div key={input.id} className="input-item">
+            <div className="input-header">
+              <span className="input-type">
+                {input.metadata.type === 'file'
+                  ? `file: ${input.metadata.filename}`
+                  : 'text'}
+              </span>
+              <span className="input-date">
+                {formatDate(input.metadata.timestamp)}
+              </span>
+            </div>
+            <div className="input-content">
+              {input.content}
+            </div>
+            <div className="input-actions">
+              <button
+                className="button delete-button"
+                onClick={() => handleDelete(input.id)}
+                disabled={deleteStatus[input.id]}
+              >
+                {deleteStatus[input.id] || 'delete'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -73,51 +117,34 @@ function Inputs() {
         <Link to="/" className="nav-link">back to main</Link>
       </header>
 
-      <div className="section">
-        <div className="section-title">
-          stored inputs ({inputs.length})
+      {loading && <div className="status-message">loading...</div>}
+      {error && <div className="status-message error">{error}</div>}
+
+      {!loading && !error && inputs.length === 0 && (
+        <div className="empty-state">
+          no inputs stored yet. add some text or files from the main page.
         </div>
+      )}
 
-        {loading && <div className="status-message">loading...</div>}
-        {error && <div className="status-message error">{error}</div>}
-
-        {!loading && !error && inputs.length === 0 && (
-          <div className="empty-state">
-            no inputs stored yet. add some text or files from the main page.
+      {!loading && !error && inputs.length > 0 && (
+        <div className="inputs-columns">
+          <div className="inputs-column">
+            <div className="column-header">
+              <span className="column-title">openai embeddings</span>
+              <span className="column-count">({openaiInputs.length})</span>
+            </div>
+            {renderInputsList(openaiInputs, 'openai')}
           </div>
-        )}
 
-        {!loading && inputs.length > 0 && (
-          <div className="inputs-list">
-            {inputs.map((input) => (
-              <div key={input.id} className="input-item">
-                <div className="input-header">
-                  <span className="input-type">
-                    {input.metadata.type === 'file'
-                      ? `file: ${input.metadata.filename}`
-                      : 'text'}
-                  </span>
-                  <span className="input-date">
-                    {formatDate(input.metadata.timestamp)}
-                  </span>
-                </div>
-                <div className="input-content">
-                  {input.content}
-                </div>
-                <div className="input-actions">
-                  <button
-                    className="button delete-button"
-                    onClick={() => handleDelete(input.id)}
-                    disabled={deleteStatus[input.id]}
-                  >
-                    {deleteStatus[input.id] || 'delete'}
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="inputs-column">
+            <div className="column-header">
+              <span className="column-title">ollama embeddings</span>
+              <span className="column-count">({ollamaInputs.length})</span>
+            </div>
+            {renderInputsList(ollamaInputs, 'ollama')}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

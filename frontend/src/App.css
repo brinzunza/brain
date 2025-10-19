@@ -325,6 +325,49 @@ input[type="file"] {
   font-size: 14px;
 }
 
+.empty-state-small {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+  border: 1px solid #333;
+  background-color: #0a0a0a;
+}
+
+.inputs-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-top: 40px;
+}
+
+.inputs-column {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 10px;
+}
+
+.column-title {
+  font-size: 14px;
+  color: #00ff88;
+  text-transform: lowercase;
+  font-weight: 400;
+}
+
+.column-count {
+  font-size: 12px;
+  color: #666;
+}
+
 .inputs-list {
   display: flex;
   flex-direction: column;
