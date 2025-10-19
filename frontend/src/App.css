@@ -39,6 +39,9 @@ body {
   text-transform: lowercase;
   margin-bottom: 20px;
   color: #666;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 textarea {
@@ -231,4 +234,22 @@ input[type="file"] {
   display: flex;
   gap: 20px;
   align-items: center;
+}
+
+.llm-toggle-button {
+  background: none;
+  border: 1px solid #333;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: lowercase;
+  padding: 4px 12px;
+  transition: all 0.2s;
+  border-radius: 3px;
+}
+
+.llm-toggle-button:hover {
+  border-color: #00ff88;
+  color: #00ff88;
 }

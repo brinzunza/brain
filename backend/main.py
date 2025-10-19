@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from pypdf import PdfReader
 from docx import Document
 import io
+import requests
 
 load_dotenv()
 
@@ -34,6 +35,10 @@ collection = chroma_client.get_or_create_collection(
 # initialize openai client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# ollama configuration
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+
 
 class TextInput(BaseModel):
     text: str
@@ -41,6 +46,7 @@ class TextInput(BaseModel):
 
 class Question(BaseModel):
     question: str
+    llm_provider: str = "chatgpt"
 
 
 def get_embedding(text: str):
@@ -153,11 +159,29 @@ async def add_file(file: UploadFile = File(...)):
         return {"status": "error", "message": str(e)}
 
 
+def query_ollama(prompt: str, system_prompt: str):
+    """query ollama local llm"""
+    try:
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": f"{system_prompt}\n\n{prompt}",
+                "stream": False
+            }
+        )
+        response.raise_for_status()
+        return response.json()["response"]
+    except Exception as e:
+        raise Exception(f"ollama error: {str(e)}")
+
+
 @app.post("/api/ask")
 async def ask_question(question_data: Question):
     """answer questions based on stored data using rag"""
     try:
         question = question_data.question
+        llm_provider = question_data.llm_provider
 
         # get embedding for question
         question_embedding = get_embedding(question)
@@ -172,7 +196,7 @@ async def ask_question(question_data: Question):
         context_docs = results['documents'][0] if results['documents'] else []
         context = "\n\n".join(context_docs)
 
-        # generate answer using gpt
+        # generate answer using selected llm
         system_prompt = """you are a personal assistant helping the user recall information they've stored.
 answer questions based only on the provided context. if you cannot find relevant information in the context,
 say you don't have that information. keep answers concise and direct. use lowercase only."""
@@ -184,17 +208,21 @@ question: {question}
 
 answer based on the context above:"""
 
-        response = openai_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
-
-        answer = response.choices[0].message.content
+        if llm_provider == "ollama":
+            # use ollama
+            answer = query_ollama(user_prompt, system_prompt)
+        else:
+            # use openai/chatgpt
+            response = openai_client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            answer = response.choices[0].message.content
 
         return {
             "status": "success",

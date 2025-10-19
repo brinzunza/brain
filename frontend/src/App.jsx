@@ -13,6 +13,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearStatus, setClearStatus] = useState('')
+  const [llmProvider, setLlmProvider] = useState('chatgpt')
 
   const handleTextSubmit = async () => {
     if (!textInput.trim()) return
@@ -76,7 +77,7 @@ function App() {
       const response = await fetch(`${API_URL}/api/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userQuestion })
+        body: JSON.stringify({ question: userQuestion, llm_provider: llmProvider })
       })
 
       const data = await response.json()
@@ -149,6 +150,7 @@ function App() {
           />
           {file && <span className="file-name">{file.name}</span>}
         </div>
+        <div></div>
         <button className="button" onClick={handleFileSubmit} disabled={!file}>
           store
         </button>
@@ -160,7 +162,15 @@ function App() {
       </div>
 
       <div className="section">
-        <div className="section-title">ask questions</div>
+        <div className="section-title">
+          ask questions
+          <button
+            className="llm-toggle-button"
+            onClick={() => setLlmProvider(prev => prev === 'chatgpt' ? 'ollama' : 'chatgpt')}
+          >
+            {llmProvider === 'chatgpt' ? 'chatgpt' : 'ollama'}
+          </button>
+        </div>
         {messages.length > 0 && (
           <div className="messages">
             {messages.map((msg, idx) => (
