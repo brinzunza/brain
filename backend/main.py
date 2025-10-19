@@ -233,6 +233,38 @@ answer based on the context above:"""
         return {"status": "error", "message": str(e)}
 
 
+@app.get("/api/inputs")
+async def get_all_inputs():
+    """retrieve all stored inputs from the brain"""
+    try:
+        # get all items from the collection
+        results = collection.get()
+
+        # format the data
+        inputs = []
+        if results and results['ids']:
+            for i in range(len(results['ids'])):
+                inputs.append({
+                    "id": results['ids'][i],
+                    "content": results['documents'][i],
+                    "metadata": results['metadatas'][i]
+                })
+
+        return {"status": "success", "inputs": inputs}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.delete("/api/inputs/{input_id}")
+async def delete_input(input_id: str):
+    """delete a specific input from the brain"""
+    try:
+        collection.delete(ids=[input_id])
+        return {"status": "success", "message": "input deleted"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.delete("/api/clear")
 async def clear_brain():
     """delete all stored data from the brain"""

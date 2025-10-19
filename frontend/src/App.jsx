@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import './App.css'
 
 const API_URL = 'http://localhost:8000'
@@ -118,6 +119,7 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>brain</h1>
+        <Link to="/inputs" className="nav-link">inputs</Link>
       </header>
 
       <div className="section">
