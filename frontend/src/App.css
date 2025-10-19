@@ -276,6 +276,30 @@ input[type="file"] {
   flex: 1;
 }
 
+.header-controls {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.provider-toggle-button {
+  background: none;
+  border: 1px solid #333;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: lowercase;
+  padding: 6px 12px;
+  transition: all 0.2s;
+  border-radius: 3px;
+}
+
+.provider-toggle-button:hover {
+  border-color: #00ff88;
+  color: #00ff88;
+}
+
 .empty-state {
   padding: 40px 20px;
   text-align: center;

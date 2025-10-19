@@ -15,6 +15,7 @@ function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearStatus, setClearStatus] = useState('')
   const [llmProvider, setLlmProvider] = useState('chatgpt')
+  const [embeddingProvider, setEmbeddingProvider] = useState('openai')
 
   const handleTextSubmit = async () => {
     if (!textInput.trim()) return
@@ -24,7 +25,10 @@ function App() {
       const response = await fetch(`${API_URL}/api/add-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: textInput.toLowerCase() })
+        body: JSON.stringify({
+          text: textInput.toLowerCase(),
+          embedding_provider: embeddingProvider
+        })
       })
 
       const data = await response.json()
@@ -46,6 +50,7 @@ function App() {
     setFileStatus('storing...')
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('embedding_provider', embeddingProvider)
 
     try {
       const response = await fetch(`${API_URL}/api/add-file`, {
@@ -78,7 +83,11 @@ function App() {
       const response = await fetch(`${API_URL}/api/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userQuestion, llm_provider: llmProvider })
+        body: JSON.stringify({
+          question: userQuestion,
+          llm_provider: llmProvider,
+          embedding_provider: embeddingProvider
+        })
       })
 
       const data = await response.json()
@@ -119,7 +128,15 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>brain</h1>
-        <Link to="/inputs" className="nav-link">inputs</Link>
+        <div className="header-controls">
+          <button
+            className="provider-toggle-button"
+            onClick={() => setEmbeddingProvider(prev => prev === 'openai' ? 'ollama' : 'openai')}
+          >
+            embeddings: {embeddingProvider}
+          </button>
+          <Link to="/inputs" className="nav-link">inputs</Link>
+        </div>
       </header>
 
       <div className="section">

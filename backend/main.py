@@ -38,24 +38,46 @@ openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # ollama configuration
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
 
 
 class TextInput(BaseModel):
     text: str
+    embedding_provider: str = "openai"
+
+
+class FileInput(BaseModel):
+    embedding_provider: str = "openai"
 
 
 class Question(BaseModel):
     question: str
     llm_provider: str = "chatgpt"
+    embedding_provider: str = "openai"
 
 
-def get_embedding(text: str):
-    """generate embedding using openai"""
-    response = openai_client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
+def get_embedding(text: str, provider: str = "openai"):
+    """generate embedding using selected provider"""
+    if provider == "ollama":
+        try:
+            response = requests.post(
+                f"{OLLAMA_URL}/api/embeddings",
+                json={
+                    "model": OLLAMA_EMBEDDING_MODEL,
+                    "prompt": text
+                }
+            )
+            response.raise_for_status()
+            return response.json()["embedding"]
+        except Exception as e:
+            raise Exception(f"ollama embedding error: {str(e)}")
+    else:
+        # use openai
+        response = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        )
+        return response.data[0].embedding
 
 def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200):
     """split text into overlapping chunks"""
@@ -75,7 +97,8 @@ async def add_text(input_data: TextInput):
     """store text input in vector database"""
     try:
         text = input_data.text
-        embedding = get_embedding(text)
+        embedding_provider = input_data.embedding_provider
+        embedding = get_embedding(text, embedding_provider)
 
         # generate unique id
         doc_id = f"text_{datetime.now().timestamp()}"
@@ -86,7 +109,8 @@ async def add_text(input_data: TextInput):
             documents=[text],
             metadatas=[{
                 "type": "text",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "embedding_provider": embedding_provider
             }],
             ids=[doc_id]
         )
@@ -125,7 +149,7 @@ def extract_text_from_file(content: bytes, filename: str) -> str:
 
 
 @app.post("/api/add-file")
-async def add_file(file: UploadFile = File(...)):
+async def add_file(file: UploadFile = File(...), embedding_provider: str = Form("openai")):
     """store file content in vector database"""
     try:
         content = await file.read()
@@ -138,7 +162,7 @@ async def add_file(file: UploadFile = File(...)):
         chunk_ids = []
 
         for i, chunk in enumerate(chunks):
-            embedding = get_embedding(chunk)
+            embedding = get_embedding(chunk, embedding_provider)
 
             doc_id = f"file_{datetime.now().timestamp()}_{i}"
 
@@ -148,7 +172,8 @@ async def add_file(file: UploadFile = File(...)):
                 metadatas=[{
                     "type": "file",
                     "filename": file.filename,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
+                    "embedding_provider": embedding_provider
                 }],
                 ids=[doc_id]
             )
@@ -182,9 +207,10 @@ async def ask_question(question_data: Question):
     try:
         question = question_data.question
         llm_provider = question_data.llm_provider
+        embedding_provider = question_data.embedding_provider
 
         # get embedding for question
-        question_embedding = get_embedding(question)
+        question_embedding = get_embedding(question, embedding_provider)
 
         # query chromadb for relevant documents
         results = collection.query(

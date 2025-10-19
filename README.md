@@ -41,6 +41,11 @@ python main.py
 
 backend will run on `http://localhost:8000`
 
+5. run ollama server:
+```bash
+ollama serve
+```
+
 ### frontend
 
 1. navigate to frontend directory:
