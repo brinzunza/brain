@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
@@ -16,6 +16,35 @@ function App() {
   const [clearStatus, setClearStatus] = useState('')
   const [llmProvider, setLlmProvider] = useState('chatgpt')
   const [embeddingProvider, setEmbeddingProvider] = useState('openai')
+  const [availableProviders, setAvailableProviders] = useState({
+    openai_available: true,
+    ollama_available: true
+  })
+
+  useEffect(() => {
+    checkAvailableProviders()
+  }, [])
+
+  const checkAvailableProviders = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/providers`)
+      const data = await response.json()
+      if (data.status === 'success') {
+        setAvailableProviders(data.providers)
+
+        // auto-select available provider
+        if (!data.providers.openai_available && data.providers.ollama_available) {
+          setEmbeddingProvider('ollama')
+          setLlmProvider('ollama')
+        } else if (data.providers.openai_available && !data.providers.ollama_available) {
+          setEmbeddingProvider('openai')
+          setLlmProvider('chatgpt')
+        }
+      }
+    } catch (err) {
+      console.error('failed to check providers:', err)
+    }
+  }
 
   const handleTextSubmit = async () => {
     if (!textInput.trim()) return
@@ -129,12 +158,20 @@ function App() {
       <header className="header">
         <h1>brain</h1>
         <div className="header-controls">
-          <button
-            className="provider-toggle-button"
-            onClick={() => setEmbeddingProvider(prev => prev === 'openai' ? 'ollama' : 'openai')}
-          >
-            embeddings: {embeddingProvider}
-          </button>
+          {(availableProviders.openai_available && availableProviders.ollama_available) && (
+            <button
+              className="provider-toggle-button"
+              onClick={() => setEmbeddingProvider(prev => prev === 'openai' ? 'ollama' : 'openai')}
+            >
+              embeddings: {embeddingProvider}
+            </button>
+          )}
+          {!availableProviders.openai_available && availableProviders.ollama_available && (
+            <span className="provider-label">embeddings: ollama</span>
+          )}
+          {availableProviders.openai_available && !availableProviders.ollama_available && (
+            <span className="provider-label">embeddings: openai</span>
+          )}
           <Link to="/inputs" className="nav-link">inputs</Link>
         </div>
       </header>
@@ -183,12 +220,20 @@ function App() {
       <div className="section">
         <div className="section-title">
           ask questions
-          <button
-            className="llm-toggle-button"
-            onClick={() => setLlmProvider(prev => prev === 'chatgpt' ? 'ollama' : 'chatgpt')}
-          >
-            {llmProvider === 'chatgpt' ? 'chatgpt' : 'ollama'}
-          </button>
+          {(availableProviders.openai_available && availableProviders.ollama_available) && (
+            <button
+              className="llm-toggle-button"
+              onClick={() => setLlmProvider(prev => prev === 'chatgpt' ? 'ollama' : 'chatgpt')}
+            >
+              {llmProvider === 'chatgpt' ? 'chatgpt' : 'ollama'}
+            </button>
+          )}
+          {!availableProviders.openai_available && availableProviders.ollama_available && (
+            <span className="llm-label">ollama</span>
+          )}
+          {availableProviders.openai_available && !availableProviders.ollama_available && (
+            <span className="llm-label">chatgpt</span>
+          )}
         </div>
         {messages.length > 0 && (
           <div className="messages">

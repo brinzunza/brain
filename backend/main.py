@@ -27,13 +27,27 @@ app.add_middleware(
 
 # initialize chromadb client
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
-collection = chroma_client.get_or_create_collection(
-    name="brain_collection",
-    metadata={"hnsw:space": "cosine"}
-)
 
-# initialize openai client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# create separate collections for different embedding providers
+# openai uses 1536 dimensions, ollama (nomic-embed-text) uses 768 dimensions
+def get_collection(provider: str):
+    """get the appropriate collection for the embedding provider"""
+    collection_name = f"brain_collection_{provider}"
+    return chroma_client.get_or_create_collection(
+        name=collection_name,
+        metadata={"hnsw:space": "cosine"}
+    )
+
+# initialize openai client (optional)
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_client = None
+if openai_api_key:
+    try:
+        openai_client = OpenAI(api_key=openai_api_key)
+    except Exception as e:
+        print(f"warning: failed to initialize openai client: {e}")
+else:
+    print("warning: OPENAI_API_KEY not found. openai features will be disabled.")
 
 # ollama configuration
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -73,6 +87,8 @@ def get_embedding(text: str, provider: str = "openai"):
             raise Exception(f"ollama embedding error: {str(e)}")
     else:
         # use openai
+        if not openai_client:
+            raise Exception("openai api key not configured. please set OPENAI_API_KEY environment variable or use ollama embeddings.")
         response = openai_client.embeddings.create(
             model="text-embedding-3-small",
             input=text
@@ -102,6 +118,9 @@ async def add_text(input_data: TextInput):
 
         # generate unique id
         doc_id = f"text_{datetime.now().timestamp()}"
+
+        # get the appropriate collection for this provider
+        collection = get_collection(embedding_provider)
 
         # add to chromadb
         collection.add(
@@ -161,6 +180,9 @@ async def add_file(file: UploadFile = File(...), embedding_provider: str = Form(
         chunks = chunk_text(text_content)
         chunk_ids = []
 
+        # get the appropriate collection for this provider
+        collection = get_collection(embedding_provider)
+
         for i, chunk in enumerate(chunks):
             embedding = get_embedding(chunk, embedding_provider)
 
@@ -212,6 +234,9 @@ async def ask_question(question_data: Question):
         # get embedding for question
         question_embedding = get_embedding(question, embedding_provider)
 
+        # get the appropriate collection for this provider
+        collection = get_collection(embedding_provider)
+
         # query chromadb for relevant documents
         results = collection.query(
             query_embeddings=[question_embedding],
@@ -219,8 +244,11 @@ async def ask_question(question_data: Question):
         )
 
         # prepare context from retrieved documents
-        context_docs = results['documents'][0] if results['documents'] else []
-        context = "\n\n".join(context_docs)
+        context_docs = []
+        if results and results.get('documents') and len(results['documents']) > 0:
+            context_docs = results['documents'][0]
+
+        context = "\n\n".join(context_docs) if context_docs else ""
 
         # generate answer using selected llm
         system_prompt = """you are a personal assistant helping the user recall information they've stored.
@@ -239,6 +267,8 @@ answer based on the context above:"""
             answer = query_ollama(user_prompt, system_prompt)
         else:
             # use openai/chatgpt
+            if not openai_client:
+                raise Exception("openai api key not configured. please set OPENAI_API_KEY environment variable or use ollama.")
             response = openai_client.chat.completions.create(
                 model="gpt-4-turbo-preview",
                 messages=[
@@ -263,21 +293,32 @@ answer based on the context above:"""
 async def get_all_inputs():
     """retrieve all stored inputs from the brain"""
     try:
-        # get all items from the collection
-        results = collection.get()
-
-        # format the data
+        # get all items from both collections
         inputs = []
-        if results and results['ids']:
-            for i in range(len(results['ids'])):
-                inputs.append({
-                    "id": results['ids'][i],
-                    "content": results['documents'][i],
-                    "metadata": results['metadatas'][i]
-                })
 
-        return {"status": "success", "inputs": inputs}
+        for provider in ["openai", "ollama"]:
+            try:
+                collection = get_collection(provider)
+                results = collection.get()
+
+                # format the data
+                if results and results.get('ids') and len(results['ids']) > 0:
+                    for i in range(len(results['ids'])):
+                        inputs.append({
+                            "id": results['ids'][i],
+                            "content": results['documents'][i] if i < len(results['documents']) else "",
+                            "metadata": results['metadatas'][i] if i < len(results['metadatas']) else {},
+                            "provider": provider
+                        })
+            except Exception as e:
+                print(f"warning: could not fetch from {provider} collection: {e}")
+                continue
+
+        return {"status": "success", "inputs": inputs, "count": len(inputs)}
     except Exception as e:
+        import traceback
+        print(f"error in get_all_inputs: {e}")
+        print(traceback.format_exc())
         return {"status": "error", "message": str(e)}
 
 
@@ -285,8 +326,20 @@ async def get_all_inputs():
 async def delete_input(input_id: str):
     """delete a specific input from the brain"""
     try:
-        collection.delete(ids=[input_id])
-        return {"status": "success", "message": "input deleted"}
+        # try to delete from both collections (one will have it)
+        deleted = False
+        for provider in ["openai", "ollama"]:
+            try:
+                collection = get_collection(provider)
+                collection.delete(ids=[input_id])
+                deleted = True
+            except Exception as e:
+                continue
+
+        if deleted:
+            return {"status": "success", "message": "input deleted"}
+        else:
+            return {"status": "error", "message": "input not found"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -295,18 +348,38 @@ async def delete_input(input_id: str):
 async def clear_brain():
     """delete all stored data from the brain"""
     try:
-        # delete the collection and recreate it
-        chroma_client.delete_collection(name="brain_collection")
-
-        global collection
-        collection = chroma_client.get_or_create_collection(
-            name="brain_collection",
-            metadata={"hnsw:space": "cosine"}
-        )
+        # delete both provider collections and recreate them
+        for provider in ["openai", "ollama"]:
+            try:
+                collection_name = f"brain_collection_{provider}"
+                chroma_client.delete_collection(name=collection_name)
+                # recreate it
+                get_collection(provider)
+            except Exception as e:
+                print(f"warning: could not clear {provider} collection: {e}")
+                continue
 
         return {"status": "success", "message": "all data cleared"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/providers")
+async def get_available_providers():
+    """check which providers are available"""
+    providers = {
+        "openai_available": openai_client is not None,
+        "ollama_available": False
+    }
+
+    # check if ollama is available
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2)
+        providers["ollama_available"] = response.status_code == 200
+    except:
+        pass
+
+    return {"status": "success", "providers": providers}
 
 
 @app.get("/api/health")
