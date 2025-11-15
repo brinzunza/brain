@@ -28,15 +28,17 @@ app.add_middleware(
 # initialize chromadb client
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
-# create separate collections for different embedding providers
-# openai uses 1536 dimensions, ollama (nomic-embed-text) uses 768 dimensions
-def get_collection(provider: str):
-    """get the appropriate collection for the embedding provider"""
-    collection_name = f"brain_collection_{provider}"
+# create single unified collection
+def get_collection():
+    """get the unified brain collection"""
     return chroma_client.get_or_create_collection(
-        name=collection_name,
+        name="brain_collection",
         metadata={"hnsw:space": "cosine"}
     )
+
+def get_default_embedding_provider():
+    """get the default embedding provider from environment"""
+    return os.getenv("DEFAULT_EMBEDDING_PROVIDER", "ollama")
 
 # initialize openai client (optional)
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -57,17 +59,11 @@ OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:l
 
 class TextInput(BaseModel):
     text: str
-    embedding_provider: str = "openai"
-
-
-class FileInput(BaseModel):
-    embedding_provider: str = "openai"
 
 
 class Question(BaseModel):
     question: str
     llm_provider: str = "chatgpt"
-    embedding_provider: str = "openai"
 
 
 def get_embedding(text: str, provider: str = "openai"):
@@ -113,14 +109,14 @@ async def add_text(input_data: TextInput):
     """store text input in vector database"""
     try:
         text = input_data.text
-        embedding_provider = input_data.embedding_provider
+        embedding_provider = get_default_embedding_provider()
         embedding = get_embedding(text, embedding_provider)
 
         # generate unique id
         doc_id = f"text_{datetime.now().timestamp()}"
 
-        # get the appropriate collection for this provider
-        collection = get_collection(embedding_provider)
+        # get the unified collection
+        collection = get_collection()
 
         # add to chromadb
         collection.add(
@@ -168,7 +164,7 @@ def extract_text_from_file(content: bytes, filename: str) -> str:
 
 
 @app.post("/api/add-file")
-async def add_file(file: UploadFile = File(...), embedding_provider: str = Form("openai")):
+async def add_file(file: UploadFile = File(...)):
     """store file content in vector database"""
     try:
         content = await file.read()
@@ -179,9 +175,10 @@ async def add_file(file: UploadFile = File(...), embedding_provider: str = Form(
 
         chunks = chunk_text(text_content)
         chunk_ids = []
+        embedding_provider = get_default_embedding_provider()
 
-        # get the appropriate collection for this provider
-        collection = get_collection(embedding_provider)
+        # get the unified collection
+        collection = get_collection()
 
         for i, chunk in enumerate(chunks):
             embedding = get_embedding(chunk, embedding_provider)
@@ -229,13 +226,13 @@ async def ask_question(question_data: Question):
     try:
         question = question_data.question
         llm_provider = question_data.llm_provider
-        embedding_provider = question_data.embedding_provider
+        embedding_provider = get_default_embedding_provider()
 
         # get embedding for question
         question_embedding = get_embedding(question, embedding_provider)
 
-        # get the appropriate collection for this provider
-        collection = get_collection(embedding_provider)
+        # get the unified collection
+        collection = get_collection()
 
         # query chromadb for relevant documents
         results = collection.query(
@@ -293,26 +290,19 @@ answer based on the context above:"""
 async def get_all_inputs():
     """retrieve all stored inputs from the brain"""
     try:
-        # get all items from both collections
+        # get all items from the unified collection
         inputs = []
+        collection = get_collection()
+        results = collection.get()
 
-        for provider in ["openai", "ollama"]:
-            try:
-                collection = get_collection(provider)
-                results = collection.get()
-
-                # format the data
-                if results and results.get('ids') and len(results['ids']) > 0:
-                    for i in range(len(results['ids'])):
-                        inputs.append({
-                            "id": results['ids'][i],
-                            "content": results['documents'][i] if i < len(results['documents']) else "",
-                            "metadata": results['metadatas'][i] if i < len(results['metadatas']) else {},
-                            "provider": provider
-                        })
-            except Exception as e:
-                print(f"warning: could not fetch from {provider} collection: {e}")
-                continue
+        # format the data
+        if results and results.get('ids') and len(results['ids']) > 0:
+            for i in range(len(results['ids'])):
+                inputs.append({
+                    "id": results['ids'][i],
+                    "content": results['documents'][i] if i < len(results['documents']) else "",
+                    "metadata": results['metadatas'][i] if i < len(results['metadatas']) else {}
+                })
 
         return {"status": "success", "inputs": inputs, "count": len(inputs)}
     except Exception as e:
@@ -326,20 +316,10 @@ async def get_all_inputs():
 async def delete_input(input_id: str):
     """delete a specific input from the brain"""
     try:
-        # try to delete from both collections (one will have it)
-        deleted = False
-        for provider in ["openai", "ollama"]:
-            try:
-                collection = get_collection(provider)
-                collection.delete(ids=[input_id])
-                deleted = True
-            except Exception as e:
-                continue
-
-        if deleted:
-            return {"status": "success", "message": "input deleted"}
-        else:
-            return {"status": "error", "message": "input not found"}
+        # delete from the unified collection
+        collection = get_collection()
+        collection.delete(ids=[input_id])
+        return {"status": "success", "message": "input deleted"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -348,16 +328,10 @@ async def delete_input(input_id: str):
 async def clear_brain():
     """delete all stored data from the brain"""
     try:
-        # delete both provider collections and recreate them
-        for provider in ["openai", "ollama"]:
-            try:
-                collection_name = f"brain_collection_{provider}"
-                chroma_client.delete_collection(name=collection_name)
-                # recreate it
-                get_collection(provider)
-            except Exception as e:
-                print(f"warning: could not clear {provider} collection: {e}")
-                continue
+        # delete the unified collection and recreate it
+        chroma_client.delete_collection(name="brain_collection")
+        # recreate it
+        get_collection()
 
         return {"status": "success", "message": "all data cleared"}
     except Exception as e:
@@ -369,7 +343,8 @@ async def get_available_providers():
     """check which providers are available"""
     providers = {
         "openai_available": openai_client is not None,
-        "ollama_available": False
+        "ollama_available": False,
+        "active_embedding_provider": get_default_embedding_provider()
     }
 
     # check if ollama is available
