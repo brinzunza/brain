@@ -274,7 +274,7 @@ async def get_all_inputs():
             inputs.append({
                 "id": doc.id,
                 "content": doc.content[:500],  # Preview
-                "metadata": doc.metadata,
+                "metadata": doc.doc_metadata,
                 "document_type": doc.document_type,
                 "filename": doc.filename,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,

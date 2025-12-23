@@ -23,7 +23,7 @@ class Document(Base):
     filename = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = Column(JSON)
+    doc_metadata = Column(JSON)
 
     # Relationships
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")

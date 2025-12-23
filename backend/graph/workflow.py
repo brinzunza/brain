@@ -119,7 +119,7 @@ class BrainWorkflow:
             # In production, parse filters from question
             docs = self.sql_store.get_all_documents(limit=10)
             state["sql_results"] = [
-                {"content": doc.content[:300], "metadata": doc.metadata, "id": doc.id}
+                {"content": doc.content[:300], "metadata": doc.doc_metadata, "id": doc.id}
                 for doc in docs
             ]
         else:

@@ -25,7 +25,7 @@ class SQLStore:
                 content=content,
                 document_type=doc_type,
                 filename=filename,
-                metadata=metadata or {}
+                doc_metadata=metadata or {}
             )
             session.add(doc)
             session.commit()
