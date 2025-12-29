@@ -7,6 +7,7 @@ from databases.sql_store import SQLStore
 from agents.storage_agent import StorageRouter
 from graph.workflow import BrainWorkflow
 from utils.text_processing import chunk_text, extract_text_from_file
+from config import get_settings
 from datetime import datetime
 import uuid
 
@@ -312,18 +313,53 @@ async def delete_input(input_id: str):
 @app.delete("/api/clear")
 async def clear_brain():
     """Delete all stored data from the brain"""
+    global brain_workflow
     try:
-        # Clear all documents from SQL (cascades)
+        # Clear SQL database (cascades to chunks, tags, entities)
         docs = sql_store.get_all_documents(limit=1000)
         for doc in docs:
             sql_store.delete_document(doc.id)
 
-        # Note: Vector and graph stores would need manual clearing
-        # This is simplified for the implementation
+        # Clear vector database (ChromaDB)
+        vector_store.clear_all()
 
-        return {"status": "success", "message": "All data cleared"}
+        # Clear graph database (Neo4j) if available
+        if graph_store.available:
+            graph_store.clear_all()
+
+        # Reinitialize the workflow to get the new ChromaDB collection
+        brain_workflow = BrainWorkflow()
+        print("✓ Workflow reinitialized after clear")
+
+        return {"status": "success", "message": "All data cleared from all databases"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/providers")
+async def check_providers():
+    """Check which LLM and embedding providers are available"""
+    settings = get_settings()
+
+    # Check if OpenAI is configured
+    openai_available = bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "your-openai-api-key-here")
+
+    # Check if Ollama is available
+    ollama_available = False
+    try:
+        import httpx
+        response = httpx.get(settings.OLLAMA_URL, timeout=2.0)
+        ollama_available = response.status_code == 200
+    except:
+        pass
+
+    return {
+        "status": "success",
+        "providers": {
+            "openai_available": openai_available,
+            "ollama_available": ollama_available
+        }
+    }
 
 
 @app.get("/api/health")

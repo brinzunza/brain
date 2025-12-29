@@ -54,3 +54,18 @@ class VectorStore:
         except Exception as e:
             print(f"Error deleting from vector store: {e}")
             raise
+
+    def clear_all(self):
+        """Delete all documents from vector store"""
+        try:
+            # Delete the entire collection and recreate it
+            self.client.delete_collection("brain_vectors")
+            self.vectorstore = Chroma(
+                client=self.client,
+                collection_name="brain_vectors",
+                embedding_function=self.embeddings
+            )
+            print("Vector store cleared successfully")
+        except Exception as e:
+            print(f"Error clearing vector store: {e}")
+            raise

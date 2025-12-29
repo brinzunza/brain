@@ -67,27 +67,26 @@ class BrainWorkflow:
 
         return workflow.compile()
 
-    def _classify_query(self, state: RetrievalState) -> RetrievalState:
+    def _classify_query(self, state: RetrievalState) -> Dict:
         """Classify the query type"""
         query_type = self.classifier.classify(state["question"])
-        state["query_type"] = query_type.value
         print(f"Query classified as: {query_type.value}")
-        return state
+        return {"query_type": query_type.value}
 
-    def _retrieve_from_vector(self, state: RetrievalState) -> RetrievalState:
+    def _retrieve_from_vector(self, state: RetrievalState) -> Dict:
         """Retrieve from vector database"""
         if state["query_type"] in [QueryType.SEMANTIC.value, QueryType.HYBRID.value]:
             print("Retrieving from vector database...")
             results = self.vector_store.similarity_search(state["question"], k=5)
-            state["vector_results"] = [
+            vector_results = [
                 {"content": doc.page_content, "metadata": doc.metadata, "score": score}
                 for doc, score in results
             ]
         else:
-            state["vector_results"] = []
-        return state
+            vector_results = []
+        return {"vector_results": vector_results}
 
-    def _retrieve_from_graph(self, state: RetrievalState) -> RetrievalState:
+    def _retrieve_from_graph(self, state: RetrievalState) -> Dict:
         """Retrieve from graph database"""
         if state["query_type"] in [QueryType.RELATIONAL.value, QueryType.HYBRID.value]:
             print("Retrieving from graph database...")
@@ -105,28 +104,26 @@ class BrainWorkflow:
                         graph_results = [{"content": str(doc), "source": "graph"} for doc in docs[:3]]
                 except Exception as e:
                     print(f"Graph retrieval error: {e}")
-
-            state["graph_results"] = graph_results
         else:
-            state["graph_results"] = []
-        return state
+            graph_results = []
+        return {"graph_results": graph_results}
 
-    def _retrieve_from_sql(self, state: RetrievalState) -> RetrievalState:
+    def _retrieve_from_sql(self, state: RetrievalState) -> Dict:
         """Retrieve from SQL database"""
         if state["query_type"] in [QueryType.STRUCTURED.value, QueryType.HYBRID.value]:
             print("Retrieving from SQL database...")
             # For now, get recent documents
             # In production, parse filters from question
             docs = self.sql_store.get_all_documents(limit=10)
-            state["sql_results"] = [
+            sql_results = [
                 {"content": doc.content[:300], "metadata": doc.doc_metadata, "id": doc.id}
                 for doc in docs
             ]
         else:
-            state["sql_results"] = []
-        return state
+            sql_results = []
+        return {"sql_results": sql_results}
 
-    def _merge_results(self, state: RetrievalState) -> RetrievalState:
+    def _merge_results(self, state: RetrievalState) -> Dict:
         """Merge results from all databases"""
         all_contexts = []
 
@@ -144,11 +141,11 @@ class BrainWorkflow:
         for result in state.get("sql_results", [])[:3]:  # Limit SQL results
             all_contexts.append(f"[Structured Data] {result['content']}")
 
-        state["merged_context"] = "\n\n".join(all_contexts)
+        merged_context = "\n\n".join(all_contexts)
         print(f"Merged {len(all_contexts)} results from databases")
-        return state
+        return {"merged_context": merged_context}
 
-    def _generate_answer(self, state: RetrievalState) -> RetrievalState:
+    def _generate_answer(self, state: RetrievalState) -> Dict:
         """Generate final answer using LLM"""
         prompt = f"""You are a personal knowledge assistant. Answer the question based on the provided context.
 
@@ -161,8 +158,7 @@ Provide a comprehensive answer based on the context. If the context doesn't cont
 
         print("Generating answer...")
         response = self.llm.invoke(prompt)
-        state["final_answer"] = response.content
-        return state
+        return {"final_answer": response.content}
 
     def run(self, question: str) -> Dict:
         """Run the workflow"""

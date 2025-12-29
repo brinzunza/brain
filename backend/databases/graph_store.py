@@ -146,3 +146,16 @@ class GraphStore:
         except Exception as e:
             print(f"Error getting knowledge graph: {e}")
             return []
+
+    def clear_all(self):
+        """Delete all nodes and relationships from graph database"""
+        if not self.available:
+            return
+        try:
+            with self.driver.session() as session:
+                # Delete all nodes and relationships
+                session.run("MATCH (n) DETACH DELETE n")
+                print("Graph store cleared successfully")
+        except Exception as e:
+            print(f"Error clearing graph store: {e}")
+            raise

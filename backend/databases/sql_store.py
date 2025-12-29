@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, and_, or_
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, joinedload
 from config import get_settings
 from models.database_models import Base, Document, DocumentChunk, Tag, Entity
 from typing import List, Dict, Optional
@@ -126,7 +126,15 @@ class SQLStore:
         """Get all documents"""
         session = self.get_session()
         try:
-            return session.query(Document).order_by(Document.created_at.desc()).limit(limit).all()
+            docs = session.query(Document).options(
+                joinedload(Document.tags),
+                joinedload(Document.chunks)
+            ).order_by(Document.created_at.desc()).limit(limit).all()
+            # Eagerly access all relationships to load them into memory before closing session
+            for doc in docs:
+                _ = doc.tags
+                _ = doc.chunks
+            return docs
         except Exception as e:
             print(f"Error getting documents: {e}")
             return []
@@ -152,7 +160,15 @@ class SQLStore:
         """Get document by ID"""
         session = self.get_session()
         try:
-            return session.query(Document).filter_by(id=doc_id).first()
+            doc = session.query(Document).options(
+                joinedload(Document.tags),
+                joinedload(Document.chunks)
+            ).filter_by(id=doc_id).first()
+            if doc:
+                # Eagerly access relationships to load them into memory
+                _ = doc.tags
+                _ = doc.chunks
+            return doc
         except Exception as e:
             print(f"Error getting document: {e}")
             return None
