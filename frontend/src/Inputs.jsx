@@ -44,7 +44,6 @@ function Inputs() {
 
       if (data.status === 'success') {
         setDeleteStatus({ [inputId]: 'deleted' })
-        // remove the input from the list
         setInputs(inputs.filter(input => input.id !== inputId))
         setTimeout(() => {
           setDeleteStatus({})
@@ -57,63 +56,10 @@ function Inputs() {
     }
   }
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return 'unknown'
-    try {
-      return new Date(timestamp).toLocaleString()
-    } catch {
-      return 'unknown'
-    }
-  }
-
-  const openaiInputs = inputs.filter(input => input.provider === 'openai')
-  const ollamaInputs = inputs.filter(input => input.provider === 'ollama')
-
-  const renderInputsList = (inputsList, providerName) => {
-    if (inputsList.length === 0) {
-      return (
-        <div className="empty-state-small">
-          no {providerName} inputs yet
-        </div>
-      )
-    }
-
-    return (
-      <div className="inputs-list">
-        {inputsList.map((input) => (
-          <div key={input.id} className="input-item">
-            <div className="input-header">
-              <span className="input-type">
-                {input.metadata.type === 'file'
-                  ? `file: ${input.metadata.filename}`
-                  : 'text'}
-              </span>
-              <span className="input-date">
-                {formatDate(input.metadata.timestamp)}
-              </span>
-            </div>
-            <div className="input-content">
-              {input.content}
-            </div>
-            <div className="input-actions">
-              <button
-                className="button delete-button"
-                onClick={() => handleDelete(input.id)}
-                disabled={deleteStatus[input.id]}
-              >
-                {deleteStatus[input.id] || 'delete'}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   return (
     <div className="app">
       <header className="header">
-        <h1>brain - inputs</h1>
+        <h1>brain - stored inputs</h1>
         <Link to="/" className="nav-link">back to main</Link>
       </header>
 
@@ -122,26 +68,40 @@ function Inputs() {
 
       {!loading && !error && inputs.length === 0 && (
         <div className="empty-state">
-          no inputs stored yet. add some text or files from the main page.
+          no inputs stored yet. add some text from the main page.
         </div>
       )}
 
       {!loading && !error && inputs.length > 0 && (
-        <div className="inputs-columns">
-          <div className="inputs-column">
-            <div className="column-header">
-              <span className="column-title">openai embeddings</span>
-              <span className="column-count">({openaiInputs.length})</span>
-            </div>
-            {renderInputsList(openaiInputs, 'openai')}
+        <div className="section">
+          <div className="section-title">
+            stored documents ({inputs.length})
           </div>
-
-          <div className="inputs-column">
-            <div className="column-header">
-              <span className="column-title">ollama embeddings</span>
-              <span className="column-count">({ollamaInputs.length})</span>
-            </div>
-            {renderInputsList(ollamaInputs, 'ollama')}
+          <div className="inputs-list">
+            {inputs.map((input) => (
+              <div key={input.id} className="input-item">
+                <div className="input-header">
+                  <span className="input-id">
+                    {input.id.substring(0, 16)}...
+                  </span>
+                  <span className="chunk-count">
+                    {input.chunk_count || 1} chunk{input.chunk_count !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="input-content">
+                  {input.content}
+                </div>
+                <div className="input-actions">
+                  <button
+                    className="button delete-button"
+                    onClick={() => handleDelete(input.id)}
+                    disabled={deleteStatus[input.id]}
+                  >
+                    {deleteStatus[input.id] || 'delete'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

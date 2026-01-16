@@ -1,17 +1,15 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from models.schemas import TextInput, Question, StorageResult, RetrievalResult, QueryType
+from models.schemas import TextInput, Question, StorageResult, RetrievalResult
 from databases.vector_store import VectorStore
 from databases.graph_store import GraphStore
-from databases.sql_store import SQLStore
-from agents.storage_agent import StorageRouter
-from graph.workflow import BrainWorkflow
-from utils.text_processing import chunk_text, extract_text_from_file
+from utils.entity_extraction import EntityExtractor
+from utils.text_processing import chunk_text
+from langchain_openai import ChatOpenAI
 from config import get_settings
-from datetime import datetime
 import uuid
 
-app = FastAPI(title="Brain - Multi-DB RAG System")
+app = FastAPI(title="Brain - Duo Storage RAG")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,7 +20,9 @@ app.add_middleware(
 )
 
 # Initialize components
-print("Initializing Brain Multi-DB RAG System...")
+print("Initializing Brain Duo Storage System...")
+settings = get_settings()
+
 try:
     vector_store = VectorStore()
     print("✓ Vector store initialized")
@@ -38,26 +38,24 @@ try:
         print("⚠ Graph store not available (optional)")
 except Exception as e:
     print(f"⚠ Graph store initialization failed: {e}")
+    graph_store.available = False
 
 try:
-    sql_store = SQLStore()
-    print("✓ SQL store initialized")
+    entity_extractor = EntityExtractor()
+    print("✓ Entity extractor initialized")
 except Exception as e:
-    print(f"✗ SQL store initialization failed: {e}")
+    print(f"✗ Entity extractor initialization failed: {e}")
     raise
 
 try:
-    storage_router = StorageRouter()
-    print("✓ Storage router initialized")
+    llm = ChatOpenAI(
+        model="gpt-4o",
+        temperature=0.7,
+        openai_api_key=settings.OPENAI_API_KEY
+    )
+    print("✓ LLM initialized")
 except Exception as e:
-    print(f"✗ Storage router initialization failed: {e}")
-    raise
-
-try:
-    brain_workflow = BrainWorkflow()
-    print("✓ Brain workflow initialized")
-except Exception as e:
-    print(f"✗ Brain workflow initialization failed: {e}")
+    print(f"✗ LLM initialization failed: {e}")
     raise
 
 print("Brain system ready!\n")
@@ -65,286 +63,218 @@ print("Brain system ready!\n")
 
 @app.post("/api/add-text", response_model=StorageResult)
 async def add_text(input_data: TextInput):
-    """Store text with intelligent routing"""
+    """Store text in vector DB (always) and graph DB (if entities found)"""
     try:
         text = input_data.text
         doc_id = f"doc_{uuid.uuid4()}"
 
-        # Determine storage strategy
-        strategy, entities = storage_router.determine_strategy(text)
-
-        storage_locations = []
-
-        # Always store in SQL for metadata
-        sql_store.create_document(
-            doc_id=doc_id,
-            content=text,
-            doc_type="text",
-            metadata=input_data.metadata or {}
-        )
-        storage_locations.append("sql")
-
-        # Add tags if provided
-        if input_data.tags:
-            sql_store.add_tags(doc_id, input_data.tags)
-
-        # Store in vector DB
+        # 1. Always store in Vector DB
         chunks = chunk_text(text)
-        chunk_ids = []
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"{doc_id}_chunk_{i}"
-            chunk_ids.append(chunk_id)
-            sql_store.add_chunk(chunk_id, doc_id, chunk, i, chunk_id)
+        chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
 
         vector_store.add_documents(
             texts=chunks,
             metadatas=[{"doc_id": doc_id, "chunk_index": i} for i in range(len(chunks))],
             ids=chunk_ids
         )
-        storage_locations.append("vector")
+        print(f"✓ Stored in vector DB: {len(chunks)} chunks")
 
-        # Store in graph DB if entities found
-        if entities and graph_store.available:
-            graph_store.create_document_node(doc_id, text, input_data.metadata or {})
+        # 2. Extract entities and store in Graph DB
+        entities_stored = 0
+        if graph_store.available:
+            entities = entity_extractor.extract(text)
+            if entities:
+                # Create document node
+                graph_store.create_document_node(doc_id, text[:500], {})
 
-            for entity in entities:
-                graph_store.create_entity_node(entity["name"], entity["type"])
-                graph_store.create_relationship(doc_id, entity["name"])
+                # Create entity nodes and relationships
+                for entity in entities:
+                    graph_store.create_entity_node(entity["name"], entity["type"])
+                    graph_store.create_relationship(doc_id, entity["name"])
 
-            sql_store.add_entities(doc_id, entities)
-            storage_locations.append("graph")
-
-        return StorageResult(
-            status="success",
-            document_id=doc_id,
-            storage_locations=storage_locations,
-            entities_extracted=[e["name"] for e in entities] if entities else None,
-            message=f"Document stored in {', '.join(storage_locations)}"
-        )
-
-    except Exception as e:
-        return StorageResult(
-            status="error",
-            document_id="",
-            storage_locations=[],
-            entities_extracted=None,
-            message=str(e)
-        )
-
-
-@app.post("/api/add-file", response_model=StorageResult)
-async def add_file(file: UploadFile = File(...)):
-    """Store file content with intelligent routing"""
-    try:
-        content = await file.read()
-        text_content = extract_text_from_file(content, file.filename)
-
-        if not text_content.strip():
-            return StorageResult(
-                status="error",
-                message="No text content found in file"
-            )
-
-        doc_id = f"doc_{uuid.uuid4()}"
-
-        # Determine storage strategy
-        strategy, entities = storage_router.determine_strategy(text_content)
-
-        storage_locations = []
-
-        # Store in SQL
-        sql_store.create_document(
-            doc_id=doc_id,
-            content=text_content,
-            doc_type="file",
-            filename=file.filename,
-            metadata={"filename": file.filename}
-        )
-        storage_locations.append("sql")
-
-        # Store in vector DB
-        chunks = chunk_text(text_content)
-        chunk_ids = []
-        for i, chunk in enumerate(chunks):
-            chunk_id = f"{doc_id}_chunk_{i}"
-            chunk_ids.append(chunk_id)
-            sql_store.add_chunk(chunk_id, doc_id, chunk, i, chunk_id)
-
-        vector_store.add_documents(
-            texts=chunks,
-            metadatas=[{"doc_id": doc_id, "chunk_index": i, "filename": file.filename} for i in range(len(chunks))],
-            ids=chunk_ids
-        )
-        storage_locations.append("vector")
-
-        # Store in graph DB if entities found
-        if entities and graph_store.available:
-            graph_store.create_document_node(doc_id, text_content, {"filename": file.filename})
-
-            for entity in entities:
-                graph_store.create_entity_node(entity["name"], entity["type"])
-                graph_store.create_relationship(doc_id, entity["name"])
-
-            sql_store.add_entities(doc_id, entities)
-            storage_locations.append("graph")
+                entities_stored = len(entities)
+                print(f"✓ Stored in graph DB: {entities_stored} entities")
 
         return StorageResult(
             status="success",
-            document_id=doc_id,
-            storage_locations=storage_locations,
-            entities_extracted=[e["name"] for e in entities] if entities else None,
-            message=f"File {file.filename} stored in {', '.join(storage_locations)}"
+            message=f"Stored in vector DB ({len(chunks)} chunks)" +
+                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else "")
         )
 
     except Exception as e:
+        print(f"Storage error: {e}")
         return StorageResult(
             status="error",
-            document_id="",
-            storage_locations=[],
-            entities_extracted=None,
             message=str(e)
         )
 
 
 @app.post("/api/ask", response_model=RetrievalResult)
 async def ask_question(question_data: Question):
-    """Answer questions using multi-DB RAG with LangGraph"""
+    """Answer questions by querying both vector and graph databases"""
     try:
-        # Run LangGraph workflow
-        result = brain_workflow.run(question_data.question)
+        question = question_data.question
+        all_context = []
 
-        # Build sources
-        sources = []
-        for doc in result.get("vector_results", [])[:3]:
-            sources.append({
+        # 1. Query Vector DB
+        print(f"\nQuerying vector DB for: {question}")
+        vector_results = vector_store.similarity_search(question, k=5)
+        vector_sources = []
+        for doc, score in vector_results:
+            all_context.append(f"[Vector] {doc.page_content}")
+            vector_sources.append({
                 "type": "vector",
-                "content": doc["content"][:200],
-                "score": doc.get("score", 0)
+                "content": doc.page_content[:200],
+                "score": score
             })
+        print(f"✓ Found {len(vector_results)} vector results")
 
-        databases_queried = []
-        if result.get("vector_results"):
-            databases_queried.append("vector")
-        if result.get("graph_results"):
-            databases_queried.append("graph")
-        if result.get("sql_results"):
-            databases_queried.append("sql")
+        # 2. Query Graph DB (if available)
+        graph_context = []
+        if graph_store.available:
+            print("Querying graph DB...")
+            # Simple graph query - get some graph data
+            try:
+                graph_data = graph_store.get_knowledge_graph(limit=10)
+                if graph_data:
+                    for record in graph_data[:3]:
+                        graph_context.append(f"[Graph] {str(record)}")
+                print(f"✓ Found {len(graph_context)} graph results")
+            except Exception as e:
+                print(f"Graph query error: {e}")
+
+        all_context.extend(graph_context)
+
+        # 3. Generate answer using LLM
+        if not all_context:
+            return RetrievalResult(
+                answer="I don't have any information to answer that question.",
+                sources=[],
+                status="success"
+            )
+
+        context_str = "\n\n".join(all_context)
+        prompt = f"""You are a helpful assistant. Answer the question based on the provided context.
+
+Context:
+{context_str}
+
+Question: {question}
+
+Answer:"""
+
+        print("Generating answer...")
+        response = llm.invoke(prompt)
 
         return RetrievalResult(
-            answer=result["final_answer"],
-            sources=sources,
-            query_type_used=QueryType(result["query_type"]),
-            databases_queried=databases_queried,
-            confidence=0.85,  # Calculate based on retrieval scores
+            answer=response.content,
+            sources=vector_sources[:3],
             status="success"
         )
 
     except Exception as e:
+        print(f"Query error: {e}")
         return RetrievalResult(
             answer="",
             sources=[],
-            query_type_used=QueryType.SEMANTIC,
-            databases_queried=[],
-            confidence=0.0,
             status="error",
             message=str(e)
         )
 
 
-@app.get("/api/knowledge-graph")
-async def get_knowledge_graph(entity: str = None):
-    """Get knowledge graph data"""
-    try:
-        if not graph_store.available:
-            return {"status": "error", "message": "Graph database not available"}
-
-        graph_data = graph_store.get_knowledge_graph(entity, limit=50)
-        return {"status": "success", "graph": [dict(record) for record in graph_data]}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
 @app.get("/api/inputs")
 async def get_all_inputs():
-    """Retrieve all stored inputs from the brain"""
+    """Retrieve stored documents from vector database"""
     try:
-        docs = sql_store.get_all_documents(limit=100)
-        inputs = []
+        # Get all documents from ChromaDB
+        collection = vector_store.vectorstore._collection
+        results = collection.get()
 
-        for doc in docs:
+        # Group by doc_id
+        docs_map = {}
+        for i, chunk_id in enumerate(results['ids']):
+            metadata = results['metadatas'][i]
+            doc_id = metadata.get('doc_id', chunk_id)
+
+            if doc_id not in docs_map:
+                docs_map[doc_id] = {
+                    "id": doc_id,
+                    "content": results['documents'][i],
+                    "chunks": []
+                }
+            docs_map[doc_id]["chunks"].append(results['documents'][i])
+
+        # Combine chunks for each document
+        inputs = []
+        for doc_id, doc_data in docs_map.items():
             inputs.append({
-                "id": doc.id,
-                "content": doc.content[:500],  # Preview
-                "metadata": doc.doc_metadata,
-                "document_type": doc.document_type,
-                "filename": doc.filename,
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "tags": [tag.name for tag in doc.tags] if doc.tags else []
+                "id": doc_id,
+                "content": " ".join(doc_data["chunks"])[:500],  # First 500 chars
+                "chunk_count": len(doc_data["chunks"])
             })
 
         return {"status": "success", "inputs": inputs, "count": len(inputs)}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"Error getting inputs: {e}")
+        return {"status": "error", "message": str(e), "inputs": [], "count": 0}
 
 
 @app.delete("/api/inputs/{input_id}")
 async def delete_input(input_id: str):
-    """Delete a specific input from the brain"""
+    """Delete a specific document"""
     try:
-        # Get document to find chunk IDs
-        doc = sql_store.get_document_by_id(input_id)
-        if doc:
-            # Delete from vector store
-            chunk_ids = [chunk.vector_id for chunk in doc.chunks]
-            if chunk_ids:
-                vector_store.delete(chunk_ids)
+        # Delete from vector store
+        collection = vector_store.vectorstore._collection
+        results = collection.get()
 
-        # Delete from SQL (cascades to chunks and entities)
-        sql_store.delete_document(input_id)
+        # Find all chunk IDs for this document
+        chunk_ids_to_delete = []
+        for i, metadata in enumerate(results['metadatas']):
+            if metadata.get('doc_id') == input_id:
+                chunk_ids_to_delete.append(results['ids'][i])
 
-        # Note: Graph deletion not implemented for simplicity
-        # In production, you'd delete the document node and orphaned entities
+        if chunk_ids_to_delete:
+            vector_store.delete(chunk_ids_to_delete)
 
-        return {"status": "success", "message": "Input deleted"}
+        # Delete from graph store if available
+        if graph_store.available:
+            try:
+                with graph_store.driver.session() as session:
+                    session.run("MATCH (d:Document {id: $doc_id}) DETACH DELETE d", doc_id=input_id)
+            except:
+                pass
+
+        return {"status": "success", "message": "Document deleted"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @app.delete("/api/clear")
 async def clear_brain():
-    """Delete all stored data from the brain"""
-    global brain_workflow
+    """Delete all stored data"""
     try:
-        # Clear SQL database (cascades to chunks, tags, entities)
-        docs = sql_store.get_all_documents(limit=1000)
-        for doc in docs:
-            sql_store.delete_document(doc.id)
-
-        # Clear vector database (ChromaDB)
+        # Clear vector database
         vector_store.clear_all()
+        print("✓ Vector store cleared")
 
-        # Clear graph database (Neo4j) if available
+        # Clear graph database
         if graph_store.available:
             graph_store.clear_all()
+            print("✓ Graph store cleared")
 
-        # Reinitialize the workflow to get the new ChromaDB collection
-        brain_workflow = BrainWorkflow()
-        print("✓ Workflow reinitialized after clear")
-
-        return {"status": "success", "message": "All data cleared from all databases"}
+        return {"status": "success", "message": "All data cleared"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/providers")
 async def check_providers():
-    """Check which LLM and embedding providers are available"""
+    """Check which LLM providers are available"""
     settings = get_settings()
 
-    # Check if OpenAI is configured
-    openai_available = bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "your-openai-api-key-here")
+    openai_available = bool(settings.OPENAI_API_KEY and
+                           settings.OPENAI_API_KEY != "your-openai-api-key-here")
 
-    # Check if Ollama is available
     ollama_available = False
     try:
         import httpx
@@ -367,21 +297,12 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "system": "multi-db-rag",
+        "system": "duo-storage-rag",
         "databases": {
             "vector": "available",
-            "sql": "available",
             "graph": "available" if graph_store.available else "unavailable"
         }
     }
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    if graph_store.available:
-        graph_store.close()
-        print("Graph store connection closed")
 
 
 if __name__ == "__main__":
