@@ -15,10 +15,9 @@ function App() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearStatus, setClearStatus] = useState('')
   const [llmProvider, setLlmProvider] = useState('chatgpt')
-  const [embeddingProvider, setEmbeddingProvider] = useState('openai')
   const [availableProviders, setAvailableProviders] = useState({
     openai_available: true,
-    ollama_available: true
+    ollama_available: false
   })
 
   useEffect(() => {
@@ -32,12 +31,10 @@ function App() {
       if (data.status === 'success') {
         setAvailableProviders(data.providers)
 
-        // auto-select available provider
+        // auto-select LLM provider based on availability
         if (!data.providers.openai_available && data.providers.ollama_available) {
-          setEmbeddingProvider('ollama')
           setLlmProvider('ollama')
-        } else if (data.providers.openai_available && !data.providers.ollama_available) {
-          setEmbeddingProvider('openai')
+        } else if (data.providers.openai_available) {
           setLlmProvider('chatgpt')
         }
       }
@@ -55,8 +52,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: textInput.toLowerCase(),
-          embedding_provider: embeddingProvider
+          text: textInput.toLowerCase()
         })
       })
 
@@ -79,7 +75,6 @@ function App() {
     setFileStatus('storing...')
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('embedding_provider', embeddingProvider)
 
     try {
       const response = await fetch(`${API_URL}/api/add-file`, {
@@ -114,8 +109,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: userQuestion,
-          llm_provider: llmProvider,
-          embedding_provider: embeddingProvider
+          llm_provider: llmProvider
         })
       })
 
@@ -158,20 +152,6 @@ function App() {
       <header className="header">
         <h1>brain</h1>
         <div className="header-controls">
-          {(availableProviders.openai_available && availableProviders.ollama_available) && (
-            <button
-              className="provider-toggle-button"
-              onClick={() => setEmbeddingProvider(prev => prev === 'openai' ? 'ollama' : 'openai')}
-            >
-              embeddings: {embeddingProvider}
-            </button>
-          )}
-          {!availableProviders.openai_available && availableProviders.ollama_available && (
-            <span className="provider-label">embeddings: ollama</span>
-          )}
-          {availableProviders.openai_available && !availableProviders.ollama_available && (
-            <span className="provider-label">embeddings: openai</span>
-          )}
           <Link to="/inputs" className="nav-link">inputs</Link>
         </div>
       </header>

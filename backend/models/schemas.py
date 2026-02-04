@@ -6,6 +6,7 @@ class TextInput(BaseModel):
 
 class Question(BaseModel):
     question: str
+    llm_provider: Optional[str] = "openai"
 
 class StorageResult(BaseModel):
     status: str

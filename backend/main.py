@@ -1,12 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from models.schemas import TextInput, Question, StorageResult, RetrievalResult
 from databases.vector_store import VectorStore
 from databases.graph_store import GraphStore
 from utils.entity_extraction import EntityExtractor
-from utils.text_processing import chunk_text
+from utils.text_processing import chunk_text, extract_text_from_file
 from langchain_openai import ChatOpenAI
 from config import get_settings
+import httpx
 import uuid
 
 app = FastAPI(title="Brain - Duo Storage RAG")
@@ -61,6 +62,27 @@ except Exception as e:
 print("Brain system ready!\n")
 
 
+# helper: call Ollama for LLM inference
+async def call_ollama(prompt: str) -> str:
+    """Send prompt to local Ollama instance and return the response text"""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.OLLAMA_URL}/api/chat",
+            json={
+                "model": settings.OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False
+            },
+            timeout=120.0
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["message"]["content"]
+
+
+#api endpoints
+
+#inputting text
 @app.post("/api/add-text", response_model=StorageResult)
 async def add_text(input_data: TextInput):
     """Store text in vector DB (always) and graph DB (if entities found)"""
@@ -108,7 +130,53 @@ async def add_text(input_data: TextInput):
             message=str(e)
         )
 
+#inputting files
+@app.post("/api/add-file", response_model=StorageResult)
+async def add_file(file: UploadFile = File(...)):
+    """Parse uploaded file, store content in vector DB and graph DB"""
+    try:
+        content = await file.read()
+        text = extract_text_from_file(content, file.filename)
 
+        doc_id = f"doc_{uuid.uuid4()}"
+
+        # 1. Store in Vector DB
+        chunks = chunk_text(text)
+        chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
+
+        vector_store.add_documents(
+            texts=chunks,
+            metadatas=[{"doc_id": doc_id, "chunk_index": i, "filename": file.filename} for i in range(len(chunks))],
+            ids=chunk_ids
+        )
+        print(f"✓ Stored file '{file.filename}' in vector DB: {len(chunks)} chunks")
+
+        # 2. Extract entities and store in Graph DB
+        entities_stored = 0
+        if graph_store.available:
+            entities = entity_extractor.extract(text)
+            if entities:
+                graph_store.create_document_node(doc_id, text[:500], {"filename": file.filename})
+                for entity in entities:
+                    graph_store.create_entity_node(entity["name"], entity["type"])
+                    graph_store.create_relationship(doc_id, entity["name"])
+                entities_stored = len(entities)
+                print(f"✓ Stored in graph DB: {entities_stored} entities")
+
+        return StorageResult(
+            status="success",
+            message=f"Stored '{file.filename}' ({len(chunks)} chunks)" +
+                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else "")
+        )
+
+    except Exception as e:
+        print(f"File storage error: {e}")
+        return StorageResult(
+            status="error",
+            message=str(e)
+        )
+
+#asking questions / querying database
 @app.post("/api/ask", response_model=RetrievalResult)
 async def ask_question(question_data: Question):
     """Answer questions by querying both vector and graph databases"""
@@ -163,11 +231,16 @@ Question: {question}
 
 Answer:"""
 
-        print("Generating answer...")
-        response = llm.invoke(prompt)
+        # Route to the requested LLM provider
+        print(f"Generating answer via {question_data.llm_provider}...")
+        if question_data.llm_provider == "ollama":
+            answer = await call_ollama(prompt)
+        else:
+            response = llm.invoke(prompt)
+            answer = response.content
 
         return RetrievalResult(
-            answer=response.content,
+            answer=answer,
             sources=vector_sources[:3],
             status="success"
         )
@@ -181,7 +254,7 @@ Answer:"""
             message=str(e)
         )
 
-
+# getting history of inputted data
 @app.get("/api/inputs")
 async def get_all_inputs():
     """Retrieve stored documents from vector database"""
@@ -218,7 +291,7 @@ async def get_all_inputs():
         print(f"Error getting inputs: {e}")
         return {"status": "error", "message": str(e), "inputs": [], "count": 0}
 
-
+# search feature for inputted data
 @app.delete("/api/inputs/{input_id}")
 async def delete_input(input_id: str):
     """Delete a specific document"""
@@ -248,7 +321,7 @@ async def delete_input(input_id: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
+# reset databases
 @app.delete("/api/clear")
 async def clear_brain():
     """Delete all stored data"""
@@ -266,7 +339,7 @@ async def clear_brain():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
+# check llm providers (offline or api)
 @app.get("/api/providers")
 async def check_providers():
     """Check which LLM providers are available"""
@@ -291,7 +364,7 @@ async def check_providers():
         }
     }
 
-
+# affirm health
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
