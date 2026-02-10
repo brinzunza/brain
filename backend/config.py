@@ -8,7 +8,11 @@ class Settings(BaseSettings):
     # Vector DB
     CHROMA_PERSIST_DIR: str = "./chroma_db"
 
-    # Graph DB (Neo4j)
+    # Graph DB Settings
+    GRAPH_STORE_TYPE: str = "sqlite"  # Options: "sqlite", "neo4j"
+    SQLITE_GRAPH_PATH: str = "./data/graph.db"
+
+    # Neo4j (optional, only if GRAPH_STORE_TYPE = "neo4j")
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USERNAME: str = "neo4j"
     NEO4J_PASSWORD: str = "password"

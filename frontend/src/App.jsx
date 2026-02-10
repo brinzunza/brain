@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
+import { estimateTokenCount } from './utils/tokenCounter'
 
 const API_URL = 'http://localhost:8000'
 
@@ -58,9 +59,10 @@ function App() {
 
       const data = await response.json()
       if (data.status === 'success') {
-        setTextStatus('stored')
+        const tokenInfo = data.token_count ? ` (${data.token_count} tokens)` : ''
+        setTextStatus(`stored${tokenInfo}`)
         setTextInput('')
-        setTimeout(() => setTextStatus(''), 2000)
+        setTimeout(() => setTextStatus(''), 3000)
       } else {
         setTextStatus('error: ' + data.message)
       }
@@ -84,9 +86,10 @@ function App() {
 
       const data = await response.json()
       if (data.status === 'success') {
-        setFileStatus('stored')
+        const tokenInfo = data.token_count ? ` (${data.token_count} tokens)` : ''
+        setFileStatus(`stored${tokenInfo}`)
         setFile(null)
-        setTimeout(() => setFileStatus(''), 2000)
+        setTimeout(() => setFileStatus(''), 3000)
       } else {
         setFileStatus('error: ' + data.message)
       }
@@ -115,7 +118,16 @@ function App() {
 
       const data = await response.json()
       if (data.status === 'success') {
-        setMessages(prev => [...prev, { type: 'answer', content: data.answer }])
+        setMessages(prev => [...prev, {
+          type: 'answer',
+          content: data.answer,
+          tokens: {
+            query: data.query_tokens,
+            context: data.context_tokens,
+            answer: data.answer_tokens,
+            total: data.total_tokens
+          }
+        }])
       } else {
         setMessages(prev => [...prev, { type: 'error', content: 'error: ' + data.message }])
       }
@@ -157,7 +169,10 @@ function App() {
       </header>
 
       <div className="section">
-        <div className="section-title">add text</div>
+        <div className="section-title">
+          add text
+          <span className="live-token-count">{estimateTokenCount(textInput)} tokens</span>
+        </div>
         <textarea
           value={textInput}
           onChange={(e) => setTextInput(e.target.value.toLowerCase())}
@@ -167,7 +182,7 @@ function App() {
           store
         </button>
         {textStatus && (
-          <div className={`status-message ${textStatus === 'stored' ? 'success' : textStatus.startsWith('error') ? 'error' : ''}`}>
+          <div className={`status-message ${textStatus === 'stored' || textStatus.includes('tokens') ? 'success' : textStatus.startsWith('error') ? 'error' : ''}`}>
             {textStatus}
           </div>
         )}
@@ -221,27 +236,37 @@ function App() {
               <div key={idx} className="message">
                 <div className="message-label">
                   {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
+                  {msg.tokens && (
+                    <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
+                      {msg.tokens.total} tokens
+                    </span>
+                  )}
                 </div>
                 <div className="message-content">{msg.content}</div>
               </div>
             ))}
           </div>
         )}
-        <div className="question-input">
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value.toLowerCase())}
-            placeholder="ask anything..."
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleAsk()
-              }
+        <div className="question-input-container">
+          <div className="question-input-header">
+            <span className="live-token-count">{estimateTokenCount(question)} tokens</span>
+          </div>
+          <div className="question-input">
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value.toLowerCase())}
+              placeholder="ask anything..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleAsk()
+                }
             }}
           />
           <button className="button" onClick={handleAsk} disabled={loading}>
             {loading ? 'thinking...' : 'ask'}
           </button>
+          </div>
         </div>
       </div>
 

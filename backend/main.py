@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from models.schemas import TextInput, Question, StorageResult, RetrievalResult
 from databases.vector_store import VectorStore
 from databases.graph_store import GraphStore
+from databases.sqlite_graph_store import SQLiteGraphStore
 from utils.entity_extraction import EntityExtractor
 from utils.text_processing import chunk_text, extract_text_from_file
+from utils.token_counter import count_tokens, count_tokens_for_chunks
 from langchain_openai import ChatOpenAI
 from config import get_settings
 import httpx
@@ -31,15 +33,29 @@ except Exception as e:
     print(f"✗ Vector store initialization failed: {e}")
     raise
 
+# Initialize graph store based on configuration
 try:
-    graph_store = GraphStore()
-    if graph_store.available:
-        print("✓ Graph store initialized")
+    if settings.GRAPH_STORE_TYPE == "sqlite":
+        graph_store = SQLiteGraphStore(db_path=settings.SQLITE_GRAPH_PATH)
+        if graph_store.available:
+            print(f"✓ SQLite graph store initialized at {settings.SQLITE_GRAPH_PATH}")
+        else:
+            print("⚠ SQLite graph store not available (optional)")
+    elif settings.GRAPH_STORE_TYPE == "neo4j":
+        graph_store = GraphStore()
+        if graph_store.available:
+            print("✓ Neo4j graph store initialized")
+        else:
+            print("⚠ Neo4j graph store not available (optional)")
     else:
-        print("⚠ Graph store not available (optional)")
+        print(f"⚠ Unknown graph store type: {settings.GRAPH_STORE_TYPE}, using SQLite")
+        graph_store = SQLiteGraphStore(db_path=settings.SQLITE_GRAPH_PATH)
+        if graph_store.available:
+            print(f"✓ SQLite graph store initialized (fallback)")
 except Exception as e:
     print(f"⚠ Graph store initialization failed: {e}")
-    graph_store.available = False
+    # Create a dummy graph store that's not available
+    graph_store = type('obj', (object,), {'available': False})()
 
 try:
     entity_extractor = EntityExtractor()
@@ -94,12 +110,17 @@ async def add_text(input_data: TextInput):
         chunks = chunk_text(text)
         chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
 
+        # Count tokens
+        token_info = count_tokens_for_chunks(chunks, model="gpt-4")
+        total_tokens = token_info["total_tokens"]
+
         vector_store.add_documents(
             texts=chunks,
-            metadatas=[{"doc_id": doc_id, "chunk_index": i} for i in range(len(chunks))],
+            metadatas=[{"doc_id": doc_id, "chunk_index": i, "token_count": token_info["chunk_tokens"][i]}
+                      for i in range(len(chunks))],
             ids=chunk_ids
         )
-        print(f"✓ Stored in vector DB: {len(chunks)} chunks")
+        print(f"✓ Stored in vector DB: {len(chunks)} chunks ({total_tokens} tokens)")
 
         # 2. Extract entities and store in Graph DB
         entities_stored = 0
@@ -107,7 +128,7 @@ async def add_text(input_data: TextInput):
             entities = entity_extractor.extract(text)
             if entities:
                 # Create document node
-                graph_store.create_document_node(doc_id, text[:500], {})
+                graph_store.create_document_node(doc_id, text[:500], {"token_count": total_tokens})
 
                 # Create entity nodes and relationships
                 for entity in entities:
@@ -119,8 +140,10 @@ async def add_text(input_data: TextInput):
 
         return StorageResult(
             status="success",
-            message=f"Stored in vector DB ({len(chunks)} chunks)" +
-                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else "")
+            message=f"Stored in vector DB ({len(chunks)} chunks, {total_tokens} tokens)" +
+                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else ""),
+            token_count=total_tokens,
+            chunk_count=len(chunks)
         )
 
     except Exception as e:
@@ -144,19 +167,24 @@ async def add_file(file: UploadFile = File(...)):
         chunks = chunk_text(text)
         chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
 
+        # Count tokens
+        token_info = count_tokens_for_chunks(chunks, model="gpt-4")
+        total_tokens = token_info["total_tokens"]
+
         vector_store.add_documents(
             texts=chunks,
-            metadatas=[{"doc_id": doc_id, "chunk_index": i, "filename": file.filename} for i in range(len(chunks))],
+            metadatas=[{"doc_id": doc_id, "chunk_index": i, "filename": file.filename, "token_count": token_info["chunk_tokens"][i]}
+                      for i in range(len(chunks))],
             ids=chunk_ids
         )
-        print(f"✓ Stored file '{file.filename}' in vector DB: {len(chunks)} chunks")
+        print(f"✓ Stored file '{file.filename}' in vector DB: {len(chunks)} chunks ({total_tokens} tokens)")
 
         # 2. Extract entities and store in Graph DB
         entities_stored = 0
         if graph_store.available:
             entities = entity_extractor.extract(text)
             if entities:
-                graph_store.create_document_node(doc_id, text[:500], {"filename": file.filename})
+                graph_store.create_document_node(doc_id, text[:500], {"filename": file.filename, "token_count": total_tokens})
                 for entity in entities:
                     graph_store.create_entity_node(entity["name"], entity["type"])
                     graph_store.create_relationship(doc_id, entity["name"])
@@ -165,8 +193,10 @@ async def add_file(file: UploadFile = File(...)):
 
         return StorageResult(
             status="success",
-            message=f"Stored '{file.filename}' ({len(chunks)} chunks)" +
-                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else "")
+            message=f"Stored '{file.filename}' ({len(chunks)} chunks, {total_tokens} tokens)" +
+                   (f" and graph DB ({entities_stored} entities)" if entities_stored > 0 else ""),
+            token_count=total_tokens,
+            chunk_count=len(chunks)
         )
 
     except Exception as e:
@@ -231,6 +261,10 @@ Question: {question}
 
 Answer:"""
 
+        # Count tokens
+        query_tokens = count_tokens(question, model="gpt-4")
+        context_tokens = count_tokens(context_str, model="gpt-4")
+
         # Route to the requested LLM provider
         print(f"Generating answer via {question_data.llm_provider}...")
         if question_data.llm_provider == "ollama":
@@ -239,10 +273,20 @@ Answer:"""
             response = llm.invoke(prompt)
             answer = response.content
 
+        # Count answer tokens
+        answer_tokens = count_tokens(answer, model="gpt-4")
+        total_tokens = query_tokens + context_tokens + answer_tokens
+
+        print(f"✓ Token usage - Query: {query_tokens}, Context: {context_tokens}, Answer: {answer_tokens}, Total: {total_tokens}")
+
         return RetrievalResult(
             answer=answer,
             sources=vector_sources[:3],
-            status="success"
+            status="success",
+            query_tokens=query_tokens,
+            context_tokens=context_tokens,
+            answer_tokens=answer_tokens,
+            total_tokens=total_tokens
         )
 
     except Exception as e:
@@ -273,9 +317,13 @@ async def get_all_inputs():
                 docs_map[doc_id] = {
                     "id": doc_id,
                     "content": results['documents'][i],
-                    "chunks": []
+                    "chunks": [],
+                    "token_count": 0
                 }
             docs_map[doc_id]["chunks"].append(results['documents'][i])
+            # Add token count from metadata if available
+            chunk_tokens = metadata.get('token_count', 0)
+            docs_map[doc_id]["token_count"] += chunk_tokens
 
         # Combine chunks for each document
         inputs = []
@@ -283,7 +331,8 @@ async def get_all_inputs():
             inputs.append({
                 "id": doc_id,
                 "content": " ".join(doc_data["chunks"])[:500],  # First 500 chars
-                "chunk_count": len(doc_data["chunks"])
+                "chunk_count": len(doc_data["chunks"]),
+                "token_count": doc_data["token_count"]
             })
 
         return {"status": "success", "inputs": inputs, "count": len(inputs)}
@@ -376,6 +425,101 @@ async def health_check():
             "graph": "available" if graph_store.available else "unavailable"
         }
     }
+
+
+@app.get("/api/graph/stats")
+async def graph_stats():
+    """Get statistics about the graph database"""
+    if not graph_store.available:
+        return {
+            "available": False,
+            "message": "Graph store is not available"
+        }
+
+    try:
+        # Check if graph store has get_stats method
+        if hasattr(graph_store, 'get_stats'):
+            stats = graph_store.get_stats()
+            return {
+                "available": True,
+                "store_type": settings.GRAPH_STORE_TYPE,
+                **stats
+            }
+        else:
+            return {
+                "available": True,
+                "store_type": settings.GRAPH_STORE_TYPE,
+                "message": "Stats not available for this graph store type"
+            }
+    except Exception as e:
+        return {
+            "available": True,
+            "error": str(e)
+        }
+
+
+@app.get("/api/graph/visualization")
+async def graph_visualization(limit: int = 100):
+    """Get knowledge graph data for visualization"""
+    if not graph_store.available:
+        return {
+            "available": False,
+            "nodes": [],
+            "edges": [],
+            "message": "Graph store is not available"
+        }
+
+    try:
+        # Get knowledge graph
+        kg = graph_store.get_knowledge_graph(limit=limit)
+
+        # Format for frontend visualization
+        if isinstance(kg, dict):
+            nodes = kg.get('nodes', [])
+            relationships = kg.get('relationships', [])
+        else:
+            # Handle Neo4j result format if needed
+            nodes = []
+            relationships = []
+
+        # Format nodes for visualization
+        formatted_nodes = []
+        for node in nodes:
+            formatted_nodes.append({
+                "id": node.get('id', node.get('name', '')),
+                "label": node.get('name', node.get('id', '')),
+                "type": node.get('type', 'unknown'),
+                "group": node.get('type', 'unknown')  # For color grouping
+            })
+
+        # Format edges for visualization
+        formatted_edges = []
+        for rel in relationships:
+            formatted_edges.append({
+                "from": rel.get('source', ''),
+                "to": rel.get('target', ''),
+                "label": rel.get('type', 'RELATED'),
+                "weight": rel.get('weight', 1.0)
+            })
+
+        return {
+            "available": True,
+            "nodes": formatted_nodes,
+            "edges": formatted_edges,
+            "stats": {
+                "node_count": len(formatted_nodes),
+                "edge_count": len(formatted_edges)
+            }
+        }
+
+    except Exception as e:
+        print(f"Error getting graph visualization: {e}")
+        return {
+            "available": False,
+            "nodes": [],
+            "edges": [],
+            "error": str(e)
+        }
 
 
 if __name__ == "__main__":
