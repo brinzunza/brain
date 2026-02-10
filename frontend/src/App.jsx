@@ -342,28 +342,40 @@ function App() {
 
           <div className="section chat-section">
             {messages.length > 0 && (
-              <div className="messages">
-                {messages.map((msg, idx) => (
-                  <div key={idx} className="message">
-                    <div className="message-label">
-                      {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
-                      {msg.streaming && (
-                        <span className="streaming-indicator">●</span>
-                      )}
-                      {msg.tokens && (
-                        <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
-                          {msg.tokens.total} tokens
-                        </span>
-                      )}
+              <>
+                <div className="chat-header">
+                  <span className="chat-title">conversation history</span>
+                  <button
+                    className="button clear-chat-button"
+                    onClick={() => setMessages([])}
+                    title="Clear chat history"
+                  >
+                    clear chat
+                  </button>
+                </div>
+                <div className="messages">
+                  {messages.map((msg, idx) => (
+                    <div key={idx} className="message">
+                      <div className="message-label">
+                        {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
+                        {msg.streaming && (
+                          <span className="streaming-indicator">●</span>
+                        )}
+                        {msg.tokens && (
+                          <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
+                            {msg.tokens.total} tokens
+                          </span>
+                        )}
+                      </div>
+                      <div className="message-content">
+                        {msg.content}
+                        {msg.streaming && <span className="cursor">▋</span>}
+                      </div>
                     </div>
-                    <div className="message-content">
-                      {msg.content}
-                      {msg.streaming && <span className="cursor">▋</span>}
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              </>
             )}
 
             <div className="question-input-container">

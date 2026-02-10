@@ -211,6 +211,32 @@ input[type="file"] {
   min-height: 0;
 }
 
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+}
+
+.chat-title {
+  font-size: 14px;
+  color: #666;
+  text-transform: lowercase;
+}
+
+.clear-chat-button {
+  font-size: 12px;
+  color: #ff4444;
+  margin-top: 0;
+  padding: 0;
+}
+
+.clear-chat-button:hover {
+  color: #fff;
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;

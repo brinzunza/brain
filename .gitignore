@@ -138,3 +138,8 @@ coverage.xml
 .cache/
 tmp/
 temp/
+
+# ===========================
+# Documentation
+# ===========================
+*.md
