@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 import { estimateTokenCount } from './utils/tokenCounter'
@@ -20,10 +20,16 @@ function App() {
     openai_available: true,
     ollama_available: false
   })
+  const messagesEndRef = useRef(null)
 
   useEffect(() => {
     checkAvailableProviders()
   }, [])
+
+  useEffect(() => {
+    // Auto-scroll to bottom when messages change
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const checkAvailableProviders = async () => {
     try {
@@ -106,8 +112,17 @@ function App() {
     setMessages(prev => [...prev, { type: 'question', content: userQuestion }])
     setLoading(true)
 
+    // Add placeholder message for streaming
+    const answerIndex = messages.length + 1
+    setMessages(prev => [...prev, {
+      type: 'answer',
+      content: '',
+      streaming: true,
+      tokens: null
+    }])
+
     try {
-      const response = await fetch(`${API_URL}/api/ask`, {
+      const response = await fetch(`${API_URL}/api/ask-stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,23 +131,77 @@ function App() {
         })
       })
 
-      const data = await response.json()
-      if (data.status === 'success') {
-        setMessages(prev => [...prev, {
-          type: 'answer',
-          content: data.answer,
-          tokens: {
-            query: data.query_tokens,
-            context: data.context_tokens,
-            answer: data.answer_tokens,
-            total: data.total_tokens
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let metadata = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'metadata') {
+                metadata = data
+              } else if (data.type === 'content') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[answerIndex] = {
+                    ...updated[answerIndex],
+                    content: updated[answerIndex].content + data.content
+                  }
+                  return updated
+                })
+              } else if (data.type === 'done') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[answerIndex] = {
+                    ...updated[answerIndex],
+                    streaming: false,
+                    tokens: {
+                      query: metadata?.query_tokens || 0,
+                      context: metadata?.context_tokens || 0,
+                      answer: data.answer_tokens,
+                      total: data.total_tokens
+                    }
+                  }
+                  return updated
+                })
+              } else if (data.type === 'error') {
+                setMessages(prev => {
+                  const updated = [...prev]
+                  updated[answerIndex] = {
+                    type: 'error',
+                    content: 'error: ' + data.message,
+                    streaming: false
+                  }
+                  return updated
+                })
+              }
+            } catch (e) {
+              console.error('Error parsing stream data:', e)
+            }
           }
-        }])
-      } else {
-        setMessages(prev => [...prev, { type: 'error', content: 'error: ' + data.message }])
+        }
       }
     } catch (error) {
-      setMessages(prev => [...prev, { type: 'error', content: 'error: ' + error.message }])
+      setMessages(prev => {
+        const updated = [...prev]
+        updated[answerIndex] = {
+          type: 'error',
+          content: 'error: ' + error.message,
+          streaming: false
+        }
+        return updated
+      })
     } finally {
       setLoading(false)
     }
@@ -278,15 +347,22 @@ function App() {
                   <div key={idx} className="message">
                     <div className="message-label">
                       {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
+                      {msg.streaming && (
+                        <span className="streaming-indicator">●</span>
+                      )}
                       {msg.tokens && (
                         <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
                           {msg.tokens.total} tokens
                         </span>
                       )}
                     </div>
-                    <div className="message-content">{msg.content}</div>
+                    <div className="message-content">
+                      {msg.content}
+                      {msg.streaming && <span className="cursor">▋</span>}
+                    </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
             )}
 

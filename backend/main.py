@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from models.schemas import TextInput, Question, StorageResult, RetrievalResult
 from databases.vector_store import VectorStore
 from databases.graph_store import GraphStore
@@ -11,6 +12,8 @@ from langchain_openai import ChatOpenAI
 from config import get_settings
 import httpx
 import uuid
+import json
+import asyncio
 
 app = FastAPI(title="Brain - Duo Storage RAG")
 
@@ -297,6 +300,156 @@ Answer:"""
             status="error",
             message=str(e)
         )
+
+#asking questions / querying database with streaming
+@app.post("/api/ask-stream")
+async def ask_question_stream(question_data: Question):
+    """Answer questions with streaming response"""
+
+    async def generate_stream():
+        try:
+            question = question_data.question
+            all_context = []
+
+            # 1. Query Vector DB
+            print(f"\nQuerying vector DB for: {question}")
+            vector_results = vector_store.similarity_search(question, k=5)
+            vector_sources = []
+            for doc, score in vector_results:
+                all_context.append(f"[Vector] {doc.page_content}")
+                vector_sources.append({
+                    "type": "vector",
+                    "content": doc.page_content[:200],
+                    "score": score
+                })
+            print(f"✓ Found {len(vector_results)} vector results")
+
+            # 2. Query Graph DB (if available)
+            graph_context = []
+            if graph_store.available:
+                print("Querying graph DB...")
+                try:
+                    graph_data = graph_store.get_knowledge_graph(limit=10)
+                    if graph_data:
+                        for record in graph_data[:3]:
+                            graph_context.append(f"[Graph] {str(record)}")
+                    print(f"✓ Found {len(graph_context)} graph results")
+                except Exception as e:
+                    print(f"Graph query error: {e}")
+
+            all_context.extend(graph_context)
+
+            # Send metadata first
+            query_tokens = count_tokens(question, model="gpt-4")
+            context_str = "\n\n".join(all_context) if all_context else ""
+            context_tokens = count_tokens(context_str, model="gpt-4")
+
+            metadata = {
+                "type": "metadata",
+                "sources": vector_sources[:3],
+                "query_tokens": query_tokens,
+                "context_tokens": context_tokens
+            }
+            yield f"data: {json.dumps(metadata)}\n\n"
+
+            # 3. Generate answer using LLM with streaming
+            if not all_context:
+                answer_chunk = {
+                    "type": "content",
+                    "content": "I don't have any information to answer that question."
+                }
+                yield f"data: {json.dumps(answer_chunk)}\n\n"
+
+                done_chunk = {
+                    "type": "done",
+                    "answer_tokens": 0,
+                    "total_tokens": query_tokens + context_tokens
+                }
+                yield f"data: {json.dumps(done_chunk)}\n\n"
+                return
+
+            prompt = f"""You are a helpful assistant. Answer the question based on the provided context.
+
+Context:
+{context_str}
+
+Question: {question}
+
+Answer:"""
+
+            # Route to the requested LLM provider
+            print(f"Generating answer via {question_data.llm_provider}...")
+
+            full_answer = ""
+
+            if question_data.llm_provider == "ollama":
+                # Stream from Ollama
+                async with httpx.AsyncClient() as client:
+                    async with client.stream(
+                        "POST",
+                        f"{settings.OLLAMA_URL}/api/chat",
+                        json={
+                            "model": settings.OLLAMA_MODEL,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": True
+                        },
+                        timeout=120.0
+                    ) as response:
+                        async for line in response.aiter_lines():
+                            if line:
+                                try:
+                                    data = json.loads(line)
+                                    if "message" in data and "content" in data["message"]:
+                                        content = data["message"]["content"]
+                                        full_answer += content
+                                        chunk = {
+                                            "type": "content",
+                                            "content": content
+                                        }
+                                        yield f"data: {json.dumps(chunk)}\n\n"
+                                except json.JSONDecodeError:
+                                    continue
+            else:
+                # Stream from OpenAI
+                stream = llm.stream(prompt)
+                for chunk in stream:
+                    content = chunk.content
+                    full_answer += content
+                    answer_chunk = {
+                        "type": "content",
+                        "content": content
+                    }
+                    yield f"data: {json.dumps(answer_chunk)}\n\n"
+
+            # Send completion with token counts
+            answer_tokens = count_tokens(full_answer, model="gpt-4")
+            total_tokens = query_tokens + context_tokens + answer_tokens
+
+            print(f"✓ Token usage - Query: {query_tokens}, Context: {context_tokens}, Answer: {answer_tokens}, Total: {total_tokens}")
+
+            done_chunk = {
+                "type": "done",
+                "answer_tokens": answer_tokens,
+                "total_tokens": total_tokens
+            }
+            yield f"data: {json.dumps(done_chunk)}\n\n"
+
+        except Exception as e:
+            print(f"Streaming error: {e}")
+            error_chunk = {
+                "type": "error",
+                "message": str(e)
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 # getting history of inputted data
 @app.get("/api/inputs")

@@ -259,6 +259,37 @@ input[type="file"] {
   cursor: help;
 }
 
+.streaming-indicator {
+  font-size: 14px;
+  color: #00ff88;
+  margin-left: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.cursor {
+  color: #00ff88;
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
 .message-content {
   font-size: 14px;
   line-height: 1.6;

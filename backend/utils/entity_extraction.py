@@ -20,9 +20,9 @@ class EntityExtractor:
 
             Example output:
             [
-                {"name": "Python", "type": "technology"},
-                {"name": "John Doe", "type": "person"},
-                {"name": "machine learning", "type": "concept"}
+                {{"name": "Python", "type": "technology"}},
+                {{"name": "John Doe", "type": "person"}},
+                {{"name": "machine learning", "type": "concept"}}
             ]"""),
             ("user", "Extract entities from this text:\n\n{text}")
         ])
