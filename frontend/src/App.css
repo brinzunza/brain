@@ -12,14 +12,17 @@ body {
 }
 
 .app {
-  max-width: 800px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 40px 20px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
-  margin-bottom: 60px;
-  text-align: center;
+  margin-bottom: 40px;
+  flex-shrink: 0;
 }
 
 .header h1 {
@@ -27,6 +30,60 @@ body {
   font-weight: 400;
   text-transform: lowercase;
   letter-spacing: 1px;
+}
+
+.two-column-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+/* Hide scrollbar but keep functionality */
+.column::-webkit-scrollbar {
+  display: none;
+}
+
+.column {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.column-header {
+  flex-shrink: 0;
+  margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.column-header h2 {
+  font-size: 16px;
+  font-weight: 400;
+  text-transform: lowercase;
+  color: #00ff88;
+  margin: 0;
+}
+
+.left-column {
+  border-right: 1px solid #333;
+  padding-right: 30px;
+}
+
+.right-column {
+  padding-left: 10px;
 }
 
 .section {
@@ -147,13 +204,30 @@ input[type="file"] {
   margin-top: 30px;
 }
 
+.chat-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .messages {
-  min-height: 200px;
-  max-height: 400px;
+  flex: 1;
   overflow-y: auto;
   margin-bottom: 20px;
   padding: 20px;
   border: 1px solid #333;
+  min-height: 200px;
+}
+
+/* Hide scrollbar for messages but keep functionality */
+.messages::-webkit-scrollbar {
+  display: none;
+}
+
+.messages {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .message {
@@ -194,6 +268,9 @@ input[type="file"] {
 
 .question-input-container {
   width: 100%;
+  flex-shrink: 0;
+  background: #000;
+  padding-top: 10px;
 }
 
 .question-input-header {
@@ -219,21 +296,7 @@ input[type="file"] {
   padding-top: 15px;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #000;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #333;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #00ff88;
-}
+/* Global scrollbar styles removed - scrollbars are hidden */
 
 .section-title.danger {
   color: #ff0044;

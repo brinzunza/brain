@@ -168,137 +168,151 @@ function App() {
         </div>
       </header>
 
-      <div className="section">
-        <div className="section-title">
-          add text
-          <span className="live-token-count">{estimateTokenCount(textInput)} tokens</span>
-        </div>
-        <textarea
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value.toLowerCase())}
-          placeholder="type anything you want to remember..."
-        />
-        <button className="button" onClick={handleTextSubmit}>
-          store
-        </button>
-        {textStatus && (
-          <div className={`status-message ${textStatus === 'stored' || textStatus.includes('tokens') ? 'success' : textStatus.startsWith('error') ? 'error' : ''}`}>
-            {textStatus}
+      <div className="two-column-layout">
+        {/* Left Column - Input Data */}
+        <div className="column left-column">
+          <div className="column-header">
+            <h2>input data</h2>
           </div>
-        )}
-      </div>
 
-      <div className="section">
-        <div className="section-title">add file</div>
-        <div className="file-input-wrapper">
-          <label htmlFor="file-input" className="file-input-label">
-            choose file
-          </label>
-          <input
-            id="file-input"
-            type="file"
-            onChange={(e) => setFile(e.target.files[0])}
-          />
-          {file && <span className="file-name">{file.name}</span>}
-        </div>
-        <div></div>
-        <button className="button" onClick={handleFileSubmit} disabled={!file}>
-          store
-        </button>
-        {fileStatus && (
-          <div className={`status-message ${fileStatus === 'stored' ? 'success' : fileStatus.startsWith('error') ? 'error' : ''}`}>
-            {fileStatus}
-          </div>
-        )}
-      </div>
-
-      <div className="section">
-        <div className="section-title">
-          ask questions
-          {(availableProviders.openai_available && availableProviders.ollama_available) && (
-            <button
-              className="llm-toggle-button"
-              onClick={() => setLlmProvider(prev => prev === 'chatgpt' ? 'ollama' : 'chatgpt')}
-            >
-              {llmProvider === 'chatgpt' ? 'chatgpt' : 'ollama'}
-            </button>
-          )}
-          {!availableProviders.openai_available && availableProviders.ollama_available && (
-            <span className="llm-label">ollama</span>
-          )}
-          {availableProviders.openai_available && !availableProviders.ollama_available && (
-            <span className="llm-label">chatgpt</span>
-          )}
-        </div>
-        {messages.length > 0 && (
-          <div className="messages">
-            {messages.map((msg, idx) => (
-              <div key={idx} className="message">
-                <div className="message-label">
-                  {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
-                  {msg.tokens && (
-                    <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
-                      {msg.tokens.total} tokens
-                    </span>
-                  )}
-                </div>
-                <div className="message-content">{msg.content}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="question-input-container">
-          <div className="question-input-header">
-            <span className="live-token-count">{estimateTokenCount(question)} tokens</span>
-          </div>
-          <div className="question-input">
+          <div className="section">
+            <div className="section-title">
+              add text
+              <span className="live-token-count">{estimateTokenCount(textInput)} tokens</span>
+            </div>
             <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value.toLowerCase())}
-              placeholder="ask anything..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleAsk()
-                }
-            }}
-          />
-          <button className="button" onClick={handleAsk} disabled={loading}>
-            {loading ? 'thinking...' : 'ask'}
-          </button>
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value.toLowerCase())}
+              placeholder="type anything you want to remember..."
+            />
+            <button className="button" onClick={handleTextSubmit}>
+              store
+            </button>
+            {textStatus && (
+              <div className={`status-message ${textStatus === 'stored' || textStatus.includes('tokens') ? 'success' : textStatus.startsWith('error') ? 'error' : ''}`}>
+                {textStatus}
+              </div>
+            )}
+          </div>
+
+          <div className="section">
+            <div className="section-title">add file</div>
+            <div className="file-input-wrapper">
+              <label htmlFor="file-input" className="file-input-label">
+                choose file
+              </label>
+              <input
+                id="file-input"
+                type="file"
+                onChange={(e) => setFile(e.target.files[0])}
+              />
+              {file && <span className="file-name">{file.name}</span>}
+            </div>
+            <div></div>
+            <button className="button" onClick={handleFileSubmit} disabled={!file}>
+              store
+            </button>
+            {fileStatus && (
+              <div className={`status-message ${fileStatus === 'stored' || fileStatus.includes('tokens') ? 'success' : fileStatus.startsWith('error') ? 'error' : ''}`}>
+                {fileStatus}
+              </div>
+            )}
+          </div>
+
+          <div className="section">
+            <div className="section-title danger">clear brain</div>
+            {!showClearConfirm ? (
+              <button
+                className="button danger"
+                onClick={() => setShowClearConfirm(true)}
+              >
+                clear all data
+              </button>
+            ) : (
+              <div className="clear-confirm">
+                <div className="warning-text">
+                  this will permanently delete all stored data. are you sure?
+                </div>
+                <div className="clear-actions">
+                  <button className="button danger" onClick={handleClearBrain}>
+                    yes, clear everything
+                  </button>
+                  <button className="button" onClick={() => setShowClearConfirm(false)}>
+                    cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {clearStatus && (
+              <div className={`status-message ${clearStatus === 'cleared' ? 'success' : clearStatus.startsWith('error') ? 'error' : ''}`}>
+                {clearStatus}
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      <div className="section">
-        <div className="section-title danger">clear brain</div>
-        {!showClearConfirm ? (
-          <button
-            className="button danger"
-            onClick={() => setShowClearConfirm(true)}
-          >
-            clear all data
-          </button>
-        ) : (
-          <div className="clear-confirm">
-            <div className="warning-text">
-              this will permanently delete all stored data. are you sure?
-            </div>
-            <div className="clear-actions">
-              <button className="button danger" onClick={handleClearBrain}>
-                yes, clear everything
+        {/* Right Column - Query */}
+        <div className="column right-column">
+          <div className="column-header">
+            <h2>query</h2>
+            {(availableProviders.openai_available && availableProviders.ollama_available) && (
+              <button
+                className="llm-toggle-button"
+                onClick={() => setLlmProvider(prev => prev === 'chatgpt' ? 'ollama' : 'chatgpt')}
+              >
+                {llmProvider === 'chatgpt' ? 'chatgpt' : 'ollama'}
               </button>
-              <button className="button" onClick={() => setShowClearConfirm(false)}>
-                cancel
-              </button>
+            )}
+            {!availableProviders.openai_available && availableProviders.ollama_available && (
+              <span className="llm-label">ollama</span>
+            )}
+            {availableProviders.openai_available && !availableProviders.ollama_available && (
+              <span className="llm-label">chatgpt</span>
+            )}
+          </div>
+
+          <div className="section chat-section">
+            {messages.length > 0 && (
+              <div className="messages">
+                {messages.map((msg, idx) => (
+                  <div key={idx} className="message">
+                    <div className="message-label">
+                      {msg.type === 'question' ? 'you' : msg.type === 'error' ? 'error' : 'brain'}
+                      {msg.tokens && (
+                        <span className="token-count" title={`Query: ${msg.tokens.query} | Context: ${msg.tokens.context} | Answer: ${msg.tokens.answer}`}>
+                          {msg.tokens.total} tokens
+                        </span>
+                      )}
+                    </div>
+                    <div className="message-content">{msg.content}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="question-input-container">
+              <div className="question-input-header">
+                <span className="live-token-count">{estimateTokenCount(question)} tokens</span>
+              </div>
+              <div className="question-input">
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value.toLowerCase())}
+                  placeholder="ask anything..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleAsk()
+                    }
+                }}
+                />
+                <button className="button" onClick={handleAsk} disabled={loading}>
+                  {loading ? 'thinking...' : 'ask'}
+                </button>
+              </div>
             </div>
           </div>
-        )}
-        {clearStatus && (
-          <div className={`status-message ${clearStatus === 'cleared' ? 'success' : clearStatus.startsWith('error') ? 'error' : ''}`}>
-            {clearStatus}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   )
