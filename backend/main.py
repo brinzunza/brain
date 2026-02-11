@@ -411,8 +411,8 @@ Answer:"""
                                     continue
             else:
                 # Stream from OpenAI
-                stream = llm.stream(prompt)
-                for chunk in stream:
+                stream = llm.astream(prompt)
+                async for chunk in stream:
                     content = chunk.content
                     full_answer += content
                     answer_chunk = {
