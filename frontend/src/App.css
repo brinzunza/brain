@@ -200,24 +200,32 @@ input[type="file"] {
   color: #ff0044;
 }
 
-.chat-container {
-  margin-top: 30px;
-}
-
 .chat-section {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  height: 600px;
+  position: relative;
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
+  padding: 15px 20px;
   border-bottom: 1px solid #333;
+  background: #0a0a0a;
+  flex-shrink: 0;
 }
 
 .chat-title {
@@ -237,13 +245,33 @@ input[type="file"] {
   color: #fff;
 }
 
-.messages {
+.messages-container {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: 20px;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty-chat-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 14px;
+  text-transform: lowercase;
+}
+
+.empty-chat-state p {
+  margin: 0;
+}
+
+.messages {
+  flex: 1;
   padding: 20px;
-  border: 1px solid #333;
-  min-height: 200px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Hide scrollbar for messages but keep functionality */
@@ -326,8 +354,9 @@ input[type="file"] {
 .question-input-container {
   width: 100%;
   flex-shrink: 0;
-  background: #000;
-  padding-top: 10px;
+  background: #0a0a0a;
+  padding: 15px 20px;
+  border-top: 1px solid #333;
 }
 
 .question-input-header {
@@ -339,18 +368,63 @@ input[type="file"] {
 
 .question-input {
   display: flex;
-  gap: 15px;
-  align-items: flex-start;
+  gap: 12px;
+  align-items: flex-end;
 }
 
 .question-input textarea {
   flex: 1;
+  min-height: 44px;
+  max-height: 200px;
+  resize: none;
+  padding: 12px 15px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #000;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: all 0.2s ease;
+  overflow-y: auto;
+}
+
+.question-input textarea:hover {
+  border-color: #555;
   min-height: 60px;
 }
 
-.question-input .button {
+.question-input textarea:focus {
+  outline: none;
+  border-color: #00ff88;
+  min-height: 80px;
+  box-shadow: 0 0 0 1px #00ff88;
+}
+
+.question-input textarea::placeholder {
+  color: #666;
+}
+
+.ask-button {
   margin-top: 0;
-  padding-top: 15px;
+  padding: 12px 20px;
+  min-width: 80px;
+  text-align: center;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.ask-button:hover:not(:disabled) {
+  border-color: #00ff88;
+  color: #00ff88;
+  background: #000;
+}
+
+.ask-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Global scrollbar styles removed - scrollbars are hidden */

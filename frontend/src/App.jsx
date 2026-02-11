@@ -341,8 +341,8 @@ function App() {
           </div>
 
           <div className="section chat-section">
-            {messages.length > 0 && (
-              <>
+            <div className="chat-container">
+              {messages.length > 0 && (
                 <div className="chat-header">
                   <span className="chat-title">conversation history</span>
                   <button
@@ -353,7 +353,15 @@ function App() {
                     clear chat
                   </button>
                 </div>
-                <div className="messages">
+              )}
+
+              <div className="messages-container">
+                {messages.length === 0 ? (
+                  <div className="empty-chat-state">
+                    <p>ask anything about your stored knowledge...</p>
+                  </div>
+                ) : (
+                  <div className="messages">
                   {messages.map((msg, idx) => (
                     <div key={idx} className="message">
                       <div className="message-label">
@@ -374,29 +382,31 @@ function App() {
                     </div>
                   ))}
                   <div ref={messagesEndRef} />
-                </div>
-              </>
-            )}
-
-            <div className="question-input-container">
-              <div className="question-input-header">
-                <span className="live-token-count">{estimateTokenCount(question)} tokens</span>
+                  </div>
+                )}
               </div>
-              <div className="question-input">
-                <textarea
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value.toLowerCase())}
-                  placeholder="ask anything..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleAsk()
-                    }
-                }}
-                />
-                <button className="button" onClick={handleAsk} disabled={loading}>
-                  {loading ? 'thinking...' : 'ask'}
-                </button>
+
+              <div className="question-input-container">
+                <div className="question-input-header">
+                  <span className="live-token-count">{estimateTokenCount(question)} tokens</span>
+                </div>
+                <div className="question-input">
+                  <textarea
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value.toLowerCase())}
+                    placeholder="ask anything..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleAsk()
+                      }
+                    }}
+                    rows="1"
+                  />
+                  <button className="button ask-button" onClick={handleAsk} disabled={loading}>
+                    {loading ? 'thinking...' : 'ask'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
